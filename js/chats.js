@@ -302,9 +302,14 @@ function openConversation(id, name, type) {
     titleEl.textContent = name;
   }
   
-  // Ocultar lista, mostrar conversación
-  if (chatlist) chatlist.hidden = true;
+  // 1. Mostrar conversación
   if (conversation) conversation.hidden = false;
+  
+  // 2. Ocultar el placeholder de bienvenida (✅ CORRECCIÓN SOLAPAMIENTO)
+  const placeholderPromo = document.getElementById('placeholderPromo');
+  if (placeholderPromo) placeholderPromo.hidden = true;
+  
+  // 3. NO ocultar la lista, se mantiene visible (✅ CORRECCIÓN BARRA LATERAL)
   
   // Mostrar/ocultar botón de videollamada
   if (btnVideo) {
@@ -495,8 +500,17 @@ function closeConversationToPromo() {
   
   currentChatId = null;
   currentChatType = null;
-  if (chatlist) chatlist.hidden = false;
+  
+  // Ocultar conversación
   if (conversation) conversation.hidden = true;
+  
+  // Mostrar placeholder de bienvenida (✅ CORRECCIÓN SOLAPAMIENTO)
+  const placeholderPromo = document.getElementById('placeholderPromo');
+  if (placeholderPromo) placeholderPromo.hidden = false;
+  
+  // Mostrar la lista de chats si se había ocultado (para móvil/responsive)
+  if (chatlist) chatlist.hidden = false; 
+  
   closeSidePanel();
 }
 
@@ -527,43 +541,15 @@ async function logout() {
 /* =========================
    UTILIDADES
 ========================== */
-/*const ChatUtils = {
-  escapeHtml: (text) => {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  },
-  
-  formatTime: (dateStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-  },
-  
-  encrypt: (text) => {
-    return btoa(encodeURIComponent(text));
-  },
-  
-  decrypt: (text) => {
-    try {
-      return decodeURIComponent(atob(text));
-    } catch (e) {
-      return text;
-    }
-  },
-  
-  playNotificationSound: () => {
-    const audio = new Audio('/assets/sounds/notification.mp3');
-    audio.volume = 0.3;
-    audio.play().catch(() => {});
-  }
-};*/
+
+// NOTA: ChatUtils se define en js/realtime-chat.js.
 
 function showToast(message, type = 'info') {
   console.log(`[${type.toUpperCase()}] ${message}`);
   // Implementar toast visual si se desea
 }
 
-function closeSidePanel() {
+function closeSidePanel() { // ✅ FUNCIÓN REINSERTADA PARA EVITAR ReferenceError
   if (sidePanel) {
     sidePanel.hidden = true;
   }
