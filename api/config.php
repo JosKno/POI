@@ -1,11 +1,11 @@
 <?php
 // VERSIÓN LIMPIA CON CREDENCIALES DIRECTAS
 
-define('DB_HOST', 'gondola.proxy.rlwy.net');
+define('DB_HOST', 'ballast.proxy.rlwy.net');
 define('DB_USER', 'root');
-define('DB_PASS', 'HUFwCLYdpndrZfStJVmZrbRgDgbcYUDx'); // <-- PON TU CONTRASEÑA REAL AQUÍ
+define('DB_PASS', 'TSNgjDKhVxhxGEGDzOEngUgWlVkvTquh'); // <-- PON TU CONTRASEÑA REAL AQUÍ
 define('DB_NAME', 'railway');
-define('DB_PORT', '50016');
+define('DB_PORT', '54764');
 
 function getDBConnection() {
     @$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);

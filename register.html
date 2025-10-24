@@ -26,27 +26,30 @@
         <h1 class="auth__title">Crea tu cuenta</h1>
         <p class="auth__subtitle">Únete a la comunidad y vive el Mundial 2026</p>
 
-        <div class="mb-3">
-          <label for="name" class="form-label fw-bold">Nombre</label>
-          <input type="text" class="form-control" id="name" placeholder="¿Como quieres aparecer?">
-        </div>
+        <form id="registerForm">
+          <div class="mb-3">
+            <label for="name" class="form-label fw-bold">Nombre</label>
+            <input type="text" class="form-control" id="name" placeholder="¿Como quieres aparecer?" required>
+          </div>
 
-        <div class="mb-3">
-          <label for="email" class="form-label fw-bold">Correo</label>
-          <input type="email" class="form-control" id="email" placeholder="tu@correo.com">
-        </div>
+          <div class="mb-3">
+            <label for="email" class="form-label fw-bold">Correo</label>
+            <input type="email" class="form-control" id="email" placeholder="tu@correo.com" required>
+          </div>
 
-        <div class="mb-3">
-          <label for="pass" class="form-label fw-bold">Contraseña</label>
-          <input type="password" class="form-control" id="pass" placeholder="••••••••">
-        </div>
+          <div class="mb-3">
+            <label for="pass" class="form-label fw-bold">Contraseña</label>
+            <input type="password" class="form-control" id="pass" placeholder="••••••••" required>
+            <small class="form-text text-white-50">Mínimo 6 caracteres</small>
+          </div>
 
-        <div class="mb-3">
-          <label for="pass2" class="form-label fw-bold">Confirmar contraseña</label>
-          <input type="password" class="form-control" id="pass2" placeholder="••••••••">
-        </div>
+          <div class="mb-3">
+            <label for="pass2" class="form-label fw-bold">Confirmar contraseña</label>
+            <input type="password" class="form-control" id="pass2" placeholder="••••••••" required>
+          </div>
 
-        <button class="btn btn-success auth__submit fw-bold">Crear cuenta</button>
+          <button type="button" class="btn btn-success auth__submit fw-bold">Crear cuenta</button>
+        </form>
 
         <p class="auth__hint mt-3">
           ¿Ya tienes cuenta?
@@ -58,5 +61,8 @@
 
   <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <!-- Script de registro -->
+  <script src="js/register.js"></script>
 </body>
 </html>
