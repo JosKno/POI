@@ -1,6 +1,5 @@
 /**
- * chats.js - VERSIÓN COMPLETA CON BD REAL
- * Carga grupos y conversaciones desde la base de datos
+ * chats.js - VERSIÓN CORREGIDA CON MANEJO DE ERRORES
  */
 
 /* =========================
@@ -9,14 +8,28 @@
 async function checkAuth() {
   try {
     const response = await fetch('/api/auth.php?action=check');
-    const data = await response.json();
+    
+    // Verificar que la respuesta sea OK
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const text = await response.text();
+    
+    // Intentar parsear como JSON
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error('Respuesta no es JSON válido:', text);
+      throw new Error('El servidor no devolvió JSON válido');
+    }
     
     if (!data.authenticated) {
       window.location.href = 'login.html';
       return false;
     }
     
-    // Guardar info del usuario
     localStorage.setItem('current_user', JSON.stringify(data.user));
     return true;
   } catch (error) {
@@ -46,9 +59,8 @@ realtimeChat.onUnreadUpdate = (data) => {
 ========================== */
 let currentChatId = null;
 let currentChatType = null;
-let conversations = JSON.parse(localStorage.getItem('conversations') || '{}');
+let conversations = {};
 const tasksByChat = {};
-const addedMembers = [];
 
 /* =========================
    ELEMENTOS DEL DOM
@@ -60,70 +72,45 @@ const convBody = document.querySelector('.conv-body');
 const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
 const convBack = document.getElementById('convBack');
-
-// Botones del header
-const btnHome = document.getElementById('btnHome');
 const btnVideo = document.getElementById('btnVideo');
 const btnMore = document.getElementById('btnMore');
 const btnLogout = document.getElementById('btnLogout');
 const btnCreateGroup = document.getElementById('btnCreateGroup');
-
-// Menú y demás elementos...
 const chatMenu = document.getElementById('chatMenu');
 const mEncrypt = document.getElementById('mEncrypt');
 const mTasks = document.getElementById('mTasks');
-const mAddMember = document.getElementById('mAddMember');
-const mEmail = document.getElementById('mEmail');
-
 const sidePanel = document.getElementById('sidePanel');
 const spClose = document.getElementById('spClose');
 const spTitle = document.getElementById('spTitle');
 const spTasksBody = document.getElementById('spTasksBody');
-const spAddBody = document.getElementById('spAddBody');
-const spEmailBody = document.getElementById('spEmailBody');
-
 const taskInput = document.getElementById('taskInput');
 const addTaskBtn = document.getElementById('addTaskBtn');
 const taskList = document.getElementById('taskList');
-
-const addInput = document.getElementById('addInput');
-const addMemberBtn = document.getElementById('addMemberBtn');
-const addedList = document.getElementById('addedList');
-
-const emailDesc = document.getElementById('emailDesc');
-const sendEmailBtn = document.getElementById('sendEmailBtn');
-
 const confirmModal = document.getElementById('confirmModal');
 const confirmMsgEl = document.getElementById('confirmMsg');
 const confirmOkBtn = document.getElementById('confirmOk');
-const confirmCancelBtn = document.getElementById('confirmCancel');
 const bsConfirmModal = confirmModal ? new bootstrap.Modal(confirmModal) : null;
 
 /* =========================
    INICIALIZACIÓN
 ========================== */
 document.addEventListener('DOMContentLoaded', async () => {
-  // Verificar autenticación primero
   const isAuth = await checkAuth();
   if (!isAuth) return;
   
   setupEventListeners();
   await loadChatsFromDatabase();
   
-  // Solicitar permisos de notificación
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
   }
   
-  // Si hay un grupo que abrir (viene de crear-grupo)
   const openGroupId = localStorage.getItem('open_group_id');
   if (openGroupId) {
     localStorage.removeItem('open_group_id');
     setTimeout(() => {
       const groupItem = document.querySelector(`[data-chat="group-${openGroupId}"]`);
-      if (groupItem) {
-        groupItem.click();
-      }
+      if (groupItem) groupItem.click();
     }, 500);
   }
 });
@@ -137,7 +124,20 @@ async function loadChatsFromDatabase() {
     
     // Cargar grupos
     const groupsResponse = await fetch('/api/groups.php?action=my_groups');
-    const groupsData = await groupsResponse.json();
+    
+    if (!groupsResponse.ok) {
+      throw new Error(`Error HTTP: ${groupsResponse.status}`);
+    }
+    
+    const groupsText = await groupsResponse.text();
+    let groupsData;
+    
+    try {
+      groupsData = JSON.parse(groupsText);
+    } catch (e) {
+      console.error('Error parseando respuesta de grupos:', groupsText);
+      throw new Error('El servidor devolvió una respuesta inválida para grupos');
+    }
     
     if (groupsData.success && groupsData.groups.length > 0) {
       groupsData.groups.forEach(group => {
@@ -145,9 +145,22 @@ async function loadChatsFromDatabase() {
       });
     }
     
-    // Cargar usuarios para chats privados
+    // Cargar usuarios
     const usersResponse = await fetch('/api/users.php?action=list');
-    const usersData = await usersResponse.json();
+    
+    if (!usersResponse.ok) {
+      throw new Error(`Error HTTP: ${usersResponse.status}`);
+    }
+    
+    const usersText = await usersResponse.text();
+    let usersData;
+    
+    try {
+      usersData = JSON.parse(usersText);
+    } catch (e) {
+      console.error('Error parseando respuesta de usuarios:', usersText);
+      throw new Error('El servidor devolvió una respuesta inválida para usuarios');
+    }
     
     if (usersData.success && usersData.users.length > 0) {
       usersData.users.forEach(user => {
@@ -157,39 +170,37 @@ async function loadChatsFromDatabase() {
     
     hideLoading();
     
-    // Mostrar mensaje si no hay chats
-    if (groupsData.groups.length === 0 && usersData.users.length === 0) {
+    if ((groupsData.groups?.length || 0) === 0 && (usersData.users?.length || 0) === 0) {
       showEmptyState();
     }
     
   } catch (error) {
     console.error('Error cargando chats:', error);
     hideLoading();
-    showToast('Error al cargar chats', 'error');
+    showToast('Error al cargar chats: ' + error.message, 'error');
+    showEmptyState();
   }
 }
 
 function showLoading() {
   if (chatlist) {
-    chatlist.innerHTML = '<div class="loading-state">Cargando chats...</div>';
+    chatlist.innerHTML = '<div class="loading-state" style="text-align:center;padding:40px 20px;opacity:0.6;">Cargando chats...</div>';
   }
 }
 
 function hideLoading() {
-  const loading = chatlist.querySelector('.loading-state');
+  const loading = chatlist?.querySelector('.loading-state');
   if (loading) loading.remove();
 }
 
 function showEmptyState() {
   if (chatlist) {
     chatlist.innerHTML = `
-      <div class="empty-state">
-        <div style="text-align:center; padding:40px 20px; opacity:0.6;">
-          <div style="font-size:48px; margin-bottom:16px;">💬</div>
-          <h3>No tienes chats aún</h3>
-          <p style="margin:12px 0;">Crea un grupo para comenzar</p>
-          <a href="crear-grupo.html" class="btn btn-success btn-sm">Crear Grupo</a>
-        </div>
+      <div class="empty-state" style="text-align:center;padding:40px 20px;opacity:0.6;">
+        <div style="font-size:48px;margin-bottom:16px;">💬</div>
+        <h3 style="font-size:1.2rem;font-weight:700;margin-bottom:8px;">No tienes chats aún</h3>
+        <p style="margin:12px 0;font-size:0.95rem;">Crea un grupo para comenzar</p>
+        <button onclick="window.location.href='crear-grupo.html'" class="btn btn-success btn-sm" style="margin-top:16px;">Crear Grupo</button>
       </div>
     `;
   }
@@ -206,24 +217,24 @@ function createChatItem(id, name, type, avatarUrl = null, memberCount = null, is
   
   const avatar = avatarUrl || 'assets/img/default-avatar.png';
   const onlineIndicator = isOnline && type === 'private' ? 
-    '<span class="online-indicator" style="width:12px;height:12px;background:#22c55e;border-radius:50%;position:absolute;bottom:2px;right:2px;border:2px solid #fff;"></span>' : '';
+    '<span style="width:12px;height:12px;background:#22c55e;border-radius:50%;position:absolute;bottom:2px;right:2px;border:2px solid #fff;"></span>' : '';
   
   const preview = type === 'group' ? 
     `👥 Grupo (${memberCount || '0'} miembros)` : 
     (isOnline ? '🟢 En línea' : 'Chat privado');
   
   chatItem.innerHTML = `
-    <div style="position:relative;">
-      <img src="${avatar}" alt="${name}" class="avatar" onerror="this.src='assets/img/default-avatar.png'" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+    <div style="position:relative;width:50px;height:50px;">
+      <img src="${avatar}" alt="${escapeHtml(name)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" onerror="this.src='assets/img/default-avatar.png'">
       ${onlineIndicator}
     </div>
-    <div class="chatinfo">
-      <div class="row1">
-        <h3>${ChatUtils.escapeHtml(name)}</h3>
-        <span class="time">•</span>
+    <div class="chatinfo" style="flex:1;min-width:0;">
+      <div class="row1" style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;font-size:0.95rem;font-weight:600;">${escapeHtml(name)}</h3>
+        <span class="time" style="font-size:0.8rem;opacity:0.6;">•</span>
       </div>
       <div class="row2">
-        <span class="preview">${preview}</span>
+        <span class="preview" style="font-size:0.85rem;opacity:0.7;">${preview}</span>
       </div>
     </div>
   `;
@@ -245,9 +256,13 @@ function openConversation(id, name, type) {
   currentChatId = id;
   currentChatType = type;
   
-  convHeader.querySelector('.title').textContent = name;
-  chatlist.hidden = true;
-  conversation.hidden = false;
+  const convNameEl = document.getElementById('convName');
+  if (convNameEl) convNameEl.textContent = name;
+  
+  const placeholderPromo = document.getElementById('placeholderPromo');
+  if (placeholderPromo) placeholderPromo.hidden = true;
+  if (chatlist) chatlist.hidden = true;
+  if (conversation) conversation.hidden = false;
   
   if (btnVideo) {
     btnVideo.style.display = type === 'private' ? 'block' : 'none';
@@ -257,15 +272,13 @@ function openConversation(id, name, type) {
     realtimeChat.stopChat(currentChatPolling);
   }
   
-  const chatKey = `${type}-${id}`;
-  const localMessages = conversations[chatKey] || [];
-  renderMessages(localMessages);
+  if (convBody) convBody.innerHTML = '';
   
   currentChatPolling = id;
   realtimeChat.startChat(id, type, handleNewMessages);
   
-  convBody.scrollTop = convBody.scrollHeight;
-  msgInput.focus();
+  if (convBody) convBody.scrollTop = convBody.scrollHeight;
+  if (msgInput) msgInput.focus();
 }
 
 /* =========================
@@ -301,25 +314,21 @@ function handleNewMessages(newMessages) {
       ChatUtils.playNotificationSound();
       
       if (document.hidden) {
-        const chatName = currentChatType === 'group' 
-          ? convHeader.querySelector('.title').textContent 
-          : msg.sender.username;
-        
         ChatUtils.showNotification(
           `Mensaje de ${msg.sender.username}`,
-          messageText,
-          msg.sender.avatar_url
+          messageText
         );
       }
     }
   });
   
-  localStorage.setItem('conversations', JSON.stringify(conversations));
   renderMessages(conversations[chatKey]);
   
-  const isNearBottom = convBody.scrollHeight - convBody.scrollTop - convBody.clientHeight < 100;
-  if (isNearBottom) {
-    convBody.scrollTop = convBody.scrollHeight;
+  if (convBody) {
+    const isNearBottom = convBody.scrollHeight - convBody.scrollTop - convBody.clientHeight < 100;
+    if (isNearBottom) {
+      convBody.scrollTop = convBody.scrollHeight;
+    }
   }
 }
 
@@ -327,6 +336,8 @@ function handleNewMessages(newMessages) {
    RENDERIZAR MENSAJES
 ========================== */
 function renderMessages(arr) {
+  if (!convBody) return;
+  
   const last = (arr || []).slice(-50);
   convBody.innerHTML = '';
   
@@ -345,11 +356,10 @@ function renderMessages(arr) {
       const gems = (typeof m.gems === 'number') ? m.gems : 0;
       const name = m.user || 'Miembro';
       inner += `
-        <div class="msg-head" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-          <strong>${ChatUtils.escapeHtml(name)}</strong>
-          <span class="gems" style="display:inline-flex;align-items:center;gap:6px;font-weight:800;">
-            <img src="assets/img/gema.png" alt="Gema" style="width:18px;height:18px;object-fit:contain;" onerror="this.style.display='none'">
-            ${gems}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <strong>${escapeHtml(name)}</strong>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-weight:800;">
+            💎 ${gems}
           </span>
         </div>
       `;
@@ -359,7 +369,7 @@ function renderMessages(arr) {
       inner += `<img src="${m.file_url}" alt="Imagen" style="max-width:200px;border-radius:8px;margin-bottom:5px;">`;
     }
     
-    inner += `${ChatUtils.escapeHtml(m.text)}<span class="time">${m.time || ''}</span>`;
+    inner += `${escapeHtml(m.text)}<span class="time" style="opacity:0.6;font-size:0.8rem;margin-left:8px;">${m.time || ''}</span>`;
     wrap.innerHTML = inner;
     convBody.appendChild(wrap);
   });
@@ -371,11 +381,11 @@ function renderMessages(arr) {
    ENVIAR MENSAJE
 ========================== */
 async function sendMessage() {
-  const text = msgInput.value.trim();
+  const text = msgInput?.value.trim();
   if (!text || !currentChatId) return;
   
-  msgInput.disabled = true;
-  sendBtn.disabled = true;
+  if (msgInput) msgInput.disabled = true;
+  if (sendBtn) sendBtn.disabled = true;
   
   try {
     const messageToSend = encryptionEnabled ? ChatUtils.encrypt(text) : text;
@@ -402,10 +412,8 @@ async function sendMessage() {
         type: 'text'
       });
       
-      localStorage.setItem('conversations', JSON.stringify(conversations));
       renderMessages(conversations[chatKey]);
-      
-      msgInput.value = '';
+      if (msgInput) msgInput.value = '';
     } else {
       throw new Error(result.error || 'Error enviando mensaje');
     }
@@ -413,9 +421,9 @@ async function sendMessage() {
     console.error('Error:', error);
     showToast('No se pudo enviar el mensaje', 'error');
   } finally {
-    msgInput.disabled = false;
-    sendBtn.disabled = false;
-    msgInput.focus();
+    if (msgInput) msgInput.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+    if (msgInput) msgInput.focus();
   }
 }
 
@@ -430,8 +438,11 @@ function closeConversationToPromo() {
   
   currentChatId = null;
   currentChatType = null;
-  chatlist.hidden = false;
-  conversation.hidden = true;
+  
+  const placeholderPromo = document.getElementById('placeholderPromo');
+  if (placeholderPromo) placeholderPromo.hidden = false;
+  if (chatlist) chatlist.hidden = false;
+  if (conversation) conversation.hidden = true;
   closeSidePanel();
 }
 
@@ -440,7 +451,7 @@ function closeConversationToPromo() {
 ========================== */
 async function logout() {
   try {
-    const response = await fetch('/api/auth.php?action=logout', {
+    await fetch('/api/auth.php?action=logout', {
       method: 'POST'
     });
     
@@ -471,10 +482,6 @@ function setupEventListeners() {
   
   convBack?.addEventListener('click', closeConversationToPromo);
   
-  btnHome?.addEventListener('click', () => {
-    window.location.href = 'index.html';
-  });
-  
   btnLogout?.addEventListener('click', () => {
     openConfirm('¿Cerrar sesión?', logout);
   });
@@ -484,16 +491,13 @@ function setupEventListeners() {
   });
   
   btnVideo?.addEventListener('click', () => {
-    if (currentChatType !== 'private') return;
     showToast('Videollamadas próximamente', 'info');
   });
   
   btnMore?.addEventListener('click', (e) => {
     e.stopPropagation();
     if (chatMenu) {
-      const isOpen = !chatMenu.hasAttribute('hidden');
-      chatMenu.hidden = isOpen;
-      btnMore.setAttribute('aria-expanded', !isOpen);
+      chatMenu.hidden = !chatMenu.hasAttribute('hidden');
     }
   });
   
@@ -502,7 +506,6 @@ function setupEventListeners() {
       const inside = chatMenu.contains(e.target) || btnMore?.contains(e.target);
       if (!inside) {
         chatMenu.setAttribute('hidden', '');
-        btnMore?.setAttribute('aria-expanded', 'false');
       }
     }
   });
@@ -528,7 +531,6 @@ function setupEventListeners() {
   });
   
   spClose?.addEventListener('click', closeSidePanel);
-  
   addTaskBtn?.addEventListener('click', addTask);
   taskInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addTask();
@@ -545,16 +547,13 @@ function setupEventListeners() {
    SIDE PANEL Y TAREAS
 ========================== */
 function openSidePanel(mode) {
-  document.querySelector('.panel')?.classList.add('narrow');
+  document.querySelector('.main-content')?.classList.add('narrow');
   if (sidePanel) sidePanel.hidden = false;
   
-  if (spTasksBody) spTasksBody.hidden = true;
-  if (spAddBody) spAddBody.hidden = true;
-  if (spEmailBody) spEmailBody.hidden = true;
+  if (spTasksBody) spTasksBody.hidden = mode !== 'tasks';
   
-  if (mode === 'tasks' && spTasksBody) {
+  if (mode === 'tasks') {
     if (spTitle) spTitle.textContent = 'Administrador de tareas';
-    spTasksBody.hidden = false;
     renderTasks();
     taskInput?.focus();
   }
@@ -562,7 +561,7 @@ function openSidePanel(mode) {
 
 function closeSidePanel() {
   if (sidePanel) sidePanel.hidden = true;
-  document.querySelector('.panel')?.classList.remove('narrow');
+  document.querySelector('.main-content')?.classList.remove('narrow');
 }
 
 function addTask() {
@@ -578,7 +577,7 @@ function addTask() {
     done: false
   });
   
-  taskInput.value = '';
+  if (taskInput) taskInput.value = '';
   renderTasks();
 }
 
@@ -596,15 +595,15 @@ function renderTasks() {
   const items = tasksByChat[chatKey] || [];
   
   if (!taskList) return;
-  
   taskList.innerHTML = '';
   
   items.forEach(t => {
     const row = document.createElement('label');
     row.className = 'sp-task';
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px;';
     row.innerHTML = `
       <input type="checkbox" ${t.done ? 'checked' : ''} data-id="${t.id}">
-      <div style="${t.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${ChatUtils.escapeHtml(t.text)}</div>
+      <div style="${t.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${escapeHtml(t.text)}</div>
     `;
     taskList.appendChild(row);
   });
@@ -621,7 +620,7 @@ function openConfirm(message, onConfirm) {
     return;
   }
   
-  confirmMsgEl.textContent = message;
+  if (confirmMsgEl) confirmMsgEl.textContent = message;
   const handler = () => {
     try {
       onConfirm && onConfirm();
@@ -636,19 +635,19 @@ function openConfirm(message, onConfirm) {
 
 function showToast(message, type = 'info') {
   const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
   toast.textContent = message;
   toast.style.cssText = `
     position: fixed;
-    top: 20px;
+    top: 80px;
     right: 20px;
     padding: 15px 20px;
     background: ${type === 'error' ? '#ef4444' : type === 'success' ? '#22c55e' : '#3b82f6'};
     color: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     z-index: 10000;
     animation: slideIn 0.3s ease;
+    font-weight: 600;
   `;
   
   document.body.appendChild(toast);
@@ -656,6 +655,12 @@ function showToast(message, type = 'info') {
     toast.style.animation = 'slideOut 0.3s ease';
     setTimeout(() => toast.remove(), 300);
   }, 3000);
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 /* =========================
