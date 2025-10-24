@@ -556,7 +556,7 @@ async function logout() {
     audio.volume = 0.3;
     audio.play().catch(() => {});
   }
-};
+};*/
 
 function showToast(message, type = 'info') {
   console.log(`[${type.toUpperCase()}] ${message}`);
@@ -579,7 +579,7 @@ function openConfirm(message, callback) {
       if (callback) callback();
     };
   }
-}*/
+}
 
 /* =========================
    EVENT LISTENERS
