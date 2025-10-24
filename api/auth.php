@@ -1,291 +1,208 @@
 <?php
 /**
- * auth.php
- * Maneja el registro, login, logout y verificación de sesión
- * VERSIÓN MEJORADA con mejor manejo de errores
+ * auth.php - CORREGIDO
+ * Sistema de autenticación completo
  */
 
-// Asegurarse de que no haya salida antes de los headers
-ob_start();
-
-require_once __DIR__ . '/config.php';
-
-// Limpiar cualquier salida previa
-ob_end_clean();
-
-// Configurar headers CORS y JSON
-header('Content-Type: application/json; charset=UTF-8');
+// Headers para JSON y CORS
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
+header('Content-Type: application/json; charset=UTF-8');
 
-// Manejar preflight OPTIONS request
+// Responder a OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
 
-// Función auxiliar para responder con JSON
-function respond($data) {
-    echo json_encode($data);
-    exit();
-}
+// Iniciar sesión
+session_start();
 
-// Obtener conexión a BD
+require_once 'config.php';
+
+$action = $_GET['action'] ?? $_POST['action'] ?? '';
+
 try {
-    $conn = getDBConnection();
-} catch (Exception $e) {
-    respond(['success' => false, 'error' => 'Error de conexión a la base de datos']);
-}
-
-$method = $_SERVER['REQUEST_METHOD'];
-
-if ($method === 'POST') {
-    // Leer el cuerpo de la petición
-    $input = file_get_contents('php://input');
-    $data = json_decode($input, true);
-    
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        respond(['success' => false, 'error' => 'JSON inválido']);
-    }
-    
-    $action = $data['action'] ?? '';
-    
     switch ($action) {
-        case 'register':
-            register($conn, $data);
-            break;
         case 'login':
-            login($conn, $data);
+            login($conn);
             break;
+            
+        case 'register':
+            register($conn);
+            break;
+            
+        case 'check':
+            checkAuth();
+            break;
+            
         case 'logout':
-            logout($conn);
+            logout();
             break;
+            
         default:
-            respond(['success' => false, 'error' => 'Acción POST no válida: ' . $action]);
+            throw new Exception('Acción no válida');
     }
-    
-} else if ($method === 'GET') {
-    $action = $_GET['action'] ?? '';
-    
-    if ($action === 'check') {
-        checkAuth($conn);
-    } else {
-        respond(['success' => false, 'error' => 'Acción GET no válida']);
-    }
-    
-} else {
-    respond(['success' => false, 'error' => 'Método HTTP no válido']);
+} catch (Exception $e) {
+    http_response_code(400);
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage()
+    ]);
 }
-
-closeDBConnection($conn);
 
 /**
- * Registrar nuevo usuario
+ * Login
  */
-function register($conn, $data) {
-    $username = sanitize($data['username'] ?? '');
-    $email = sanitize($data['email'] ?? '');
+function login($conn) {
+    $data = json_decode(file_get_contents('php://input'), true);
+    
+    $email = trim($data['email'] ?? '');
     $password = $data['password'] ?? '';
     
-    // Validaciones
+    if (empty($email) || empty($password)) {
+        throw new Exception('Email y contraseña son requeridos');
+    }
+    
+    $stmt = $conn->prepare("SELECT id, username, email, password, avatar_url, gems FROM users WHERE email = ?");
+    $stmt->bind_param('s', $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($row = $result->fetch_assoc()) {
+        // Verificar contraseña
+        if (password_verify($password, $row['password'])) {
+            // Actualizar estado online
+            $updateStmt = $conn->prepare("UPDATE users SET is_online = TRUE, last_seen = NOW() WHERE id = ?");
+            $updateStmt->bind_param('i', $row['id']);
+            $updateStmt->execute();
+            
+            // Guardar en sesión
+            $_SESSION['user_id'] = $row['id'];
+            $_SESSION['username'] = $row['username'];
+            $_SESSION['email'] = $row['email'];
+            
+            echo json_encode([
+                'success' => true,
+                'user' => [
+                    'id' => intval($row['id']),
+                    'username' => $row['username'],
+                    'email' => $row['email'],
+                    'avatar_url' => $row['avatar_url'],
+                    'gems' => intval($row['gems'])
+                ]
+            ]);
+        } else {
+            throw new Exception('Contraseña incorrecta');
+        }
+    } else {
+        throw new Exception('Usuario no encontrado');
+    }
+    
+    $conn->close();
+}
+
+/**
+ * Registro
+ */
+function register($conn) {
+    $data = json_decode(file_get_contents('php://input'), true);
+    
+    $username = trim($data['username'] ?? '');
+    $email = trim($data['email'] ?? '');
+    $password = $data['password'] ?? '';
+    
     if (empty($username) || empty($email) || empty($password)) {
-        respond(['success' => false, 'error' => 'Todos los campos son obligatorios']);
-    }
-    
-    if (strlen($username) < 3) {
-        respond(['success' => false, 'error' => 'El nombre debe tener al menos 3 caracteres']);
-    }
-    
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        respond(['success' => false, 'error' => 'Correo electrónico no válido']);
-    }
-    
-    if (strlen($password) < 6) {
-        respond(['success' => false, 'error' => 'La contraseña debe tener al menos 6 caracteres']);
+        throw new Exception('Todos los campos son requeridos');
     }
     
     // Verificar si el email ya existe
     $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-    if (!$stmt) {
-        respond(['success' => false, 'error' => 'Error en la base de datos']);
-    }
-    
-    $stmt->bind_param("s", $email);
+    $stmt->bind_param('s', $email);
     $stmt->execute();
     $result = $stmt->get_result();
     
     if ($result->num_rows > 0) {
-        $stmt->close();
-        respond(['success' => false, 'error' => 'Este correo ya está registrado']);
+        throw new Exception('El email ya está registrado');
     }
-    $stmt->close();
     
     // Hash de la contraseña
-    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
     
-    // Insertar nuevo usuario
+    // Insertar usuario
     $stmt = $conn->prepare("INSERT INTO users (username, email, password, gems) VALUES (?, ?, ?, 100)");
-    if (!$stmt) {
-        respond(['success' => false, 'error' => 'Error al preparar la consulta']);
-    }
-    
-    $stmt->bind_param("sss", $username, $email, $hashed_password);
+    $stmt->bind_param('sss', $username, $email, $hashedPassword);
     
     if ($stmt->execute()) {
-        $user_id = $conn->insert_id;
-        $stmt->close();
+        $userId = $conn->insert_id;
         
-        respond([
-            'success' => true, 
-            'message' => 'Registro exitoso',
+        // Iniciar sesión automáticamente
+        $_SESSION['user_id'] = $userId;
+        $_SESSION['username'] = $username;
+        $_SESSION['email'] = $email;
+        
+        echo json_encode([
+            'success' => true,
             'user' => [
-                'id' => $user_id,
+                'id' => $userId,
                 'username' => $username,
-                'email' => $email
+                'email' => $email,
+                'gems' => 100
             ]
         ]);
     } else {
-        $error = $stmt->error;
-        $stmt->close();
-        
-        if (strpos($error, 'Duplicate entry') !== false) {
-            respond(['success' => false, 'error' => 'El correo ya está en uso']);
-        } else {
-            respond(['success' => false, 'error' => 'Error al crear la cuenta']);
-        }
-    }
-}
-
-/**
- * Iniciar sesión
- */
-function login($conn, $data) {
-    $email = sanitize($data['email'] ?? '');
-    $password = $data['password'] ?? '';
-    
-    // Validaciones
-    if (empty($email) || empty($password)) {
-        respond(['success' => false, 'error' => 'Email y contraseña son obligatorios']);
+        throw new Exception('Error al crear usuario');
     }
     
-    // Buscar usuario por email
-    $stmt = $conn->prepare("SELECT id, username, email, password FROM users WHERE email = ?");
-    if (!$stmt) {
-        respond(['success' => false, 'error' => 'Error en la base de datos']);
-    }
-    
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    if ($result->num_rows === 0) {
-        $stmt->close();
-        respond(['success' => false, 'error' => 'Credenciales incorrectas']);
-    }
-    
-    $user = $result->fetch_assoc();
-    $stmt->close();
-    
-    // Verificar contraseña
-    if (!password_verify($password, $user['password'])) {
-        respond(['success' => false, 'error' => 'Credenciales incorrectas']);
-    }
-    
-    // Actualizar estado a online
-    $stmt_update = $conn->prepare("UPDATE users SET is_online = TRUE, last_seen = NOW() WHERE id = ?");
-    if ($stmt_update) {
-        $stmt_update->bind_param("i", $user['id']);
-        $stmt_update->execute();
-        $stmt_update->close();
-    }
-    
-    // Crear sesión
-    $_SESSION['user_id'] = $user['id'];
-    $_SESSION['username'] = $user['username'];
-    $_SESSION['email'] = $user['email'];
-    $_SESSION['logged_in'] = true;
-    $_SESSION['login_time'] = time();
-    
-    respond([
-        'success' => true,
-        'message' => 'Inicio de sesión exitoso',
-        'user' => [
-            'id' => $user['id'],
-            'username' => $user['username'],
-            'email' => $user['email']
-        ]
-    ]);
+    $conn->close();
 }
 
 /**
  * Verificar autenticación
  */
-function checkAuth($conn) {
-    if (isset($_SESSION['user_id']) && isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
-        $user_id = $_SESSION['user_id'];
-        
-        // Actualizar last_seen
-        $stmt = $conn->prepare("UPDATE users SET last_seen = NOW(), is_online = TRUE WHERE id = ?");
-        if ($stmt) {
-            $stmt->bind_param("i", $user_id);
-            $stmt->execute();
-            $stmt->close();
-        }
-        
-        // Obtener información actualizada del usuario
-        $stmt = $conn->prepare("SELECT id, username, email, gems, avatar_url FROM users WHERE id = ?");
-        if (!$stmt) {
-            respond(['authenticated' => false, 'error' => 'Error de base de datos']);
-        }
-        
-        $stmt->bind_param("i", $user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows > 0) {
-            $user = $result->fetch_assoc();
-            $stmt->close();
-            
-            respond([
-                'authenticated' => true,
-                'user' => [
-                    'id' => (int)$user['id'],
-                    'username' => $user['username'],
-                    'email' => $user['email'],
-                    'gems' => (int)$user['gems'],
-                    'avatar_url' => $user['avatar_url']
-                ]
-            ]);
-        } else {
-            $stmt->close();
-            respond(['authenticated' => false]);
-        }
+function checkAuth() {
+    if (isset($_SESSION['user_id'])) {
+        echo json_encode([
+            'authenticated' => true,
+            'user' => [
+                'id' => $_SESSION['user_id'],
+                'username' => $_SESSION['username'] ?? '',
+                'email' => $_SESSION['email'] ?? ''
+            ]
+        ]);
     } else {
-        respond(['authenticated' => false]);
+        echo json_encode([
+            'authenticated' => false
+        ]);
     }
 }
 
 /**
  * Cerrar sesión
  */
-function logout($conn) {
+function logout() {
+    // Actualizar estado offline en BD
     if (isset($_SESSION['user_id'])) {
-        $user_id = $_SESSION['user_id'];
-        
-        // Actualizar estado a offline
+        require_once 'config.php';
         $stmt = $conn->prepare("UPDATE users SET is_online = FALSE, last_seen = NOW() WHERE id = ?");
-        if ($stmt) {
-            $stmt->bind_param("i", $user_id);
-            $stmt->execute();
-            $stmt->close();
-        }
+        $stmt->bind_param('i', $_SESSION['user_id']);
+        $stmt->execute();
+        $conn->close();
     }
     
     // Destruir sesión
-    session_unset();
+    $_SESSION = array();
+    
+    if (isset($_COOKIE[session_name()])) {
+        setcookie(session_name(), '', time() - 3600, '/');
+    }
+    
     session_destroy();
     
-    respond(['success' => true, 'message' => 'Sesión cerrada']);
+    echo json_encode([
+        'success' => true,
+        'message' => 'Sesión cerrada correctamente'
+    ]);
 }
 ?>
