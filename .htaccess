@@ -1,0 +1,93 @@
+# .htaccess - Configuración para CopaLink
+
+# Habilitar reescritura de URLs
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Manejar preflight CORS
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^(.*)$ $1 [R=200,L]
+
+    # No reescribir archivos y directorios existentes
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # Redirigir todo a router.php
+    RewriteRule ^api/(.*)$ api/$1 [L]
+    RewriteRule ^(.*)$ index.html [L]
+</IfModule>
+
+# Configuración de CORS
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS, PUT, DELETE"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    Header set Access-Control-Max-Age "3600"
+</IfModule>
+
+# Configuración de sesiones PHP
+<IfModule mod_php.c>
+    php_value session.cookie_lifetime 86400
+    php_value session.gc_maxlifetime 86400
+    php_flag session.cookie_httponly On
+    php_flag session.cookie_secure Off
+</IfModule>
+
+# Prevenir listado de directorios
+Options -Indexes
+
+# Proteger archivos sensibles
+<FilesMatch "\.(env|ini|log|md|json|toml)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Permitir acceso a archivos PHP en api/
+<FilesMatch "^(api/).*\.php$">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+</FilesMatch>
+
+# Comprimir archivos para mejor rendimiento
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Cache para recursos estáticos
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+    ExpiresByType application/json "access plus 0 seconds"
+</IfModule>
+
+# Deshabilitar cache para archivos PHP y API
+<FilesMatch "\.(php)$">
+    <IfModule mod_expires.c>
+        ExpiresActive Off
+    </IfModule>
+    <IfModule mod_headers.c>
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires 0
+    </IfModule>
+</FilesMatch>
+
+# Configuración adicional para Railway
+DirectoryIndex index.html index.php
