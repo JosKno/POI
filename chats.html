@@ -13,81 +13,43 @@
   <link rel="stylesheet" href="css/chats.css" />
   
   <style>
-    /* Estilos adicionales para dropdown */
-    .user-dropdown {
-      position: relative;
-    }
+    /* Dropdown de usuario */
+    .user-dropdown { position: relative; }
     
     .user-menu {
       position: absolute;
       top: calc(100% + 8px);
       right: 0;
-      min-width: 200px;
+      min-width: 220px;
       background: rgba(12, 16, 26, 0.98);
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 12px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(12px);
       overflow: hidden;
       z-index: 1000;
       display: none;
     }
     
-    .user-menu.show {
-      display: block;
-      animation: slideDown 0.2s ease;
-    }
-    
-    @keyframes slideDown {
-      from {
-        opacity: 0;
-        transform: translateY(-10px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
+    .user-menu.show { display: block; }
     
     .user-menu-header {
       padding: 16px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    
-    .user-menu-avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #22c55e, #3b82f6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      color: white;
-    }
-    
-    .user-menu-info {
-      flex: 1;
     }
     
     .user-menu-name {
       font-weight: 700;
       color: white;
-      font-size: 0.95rem;
-      margin-bottom: 2px;
+      margin-bottom: 4px;
     }
     
     .user-menu-email {
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       color: rgba(255, 255, 255, 0.6);
     }
     
-    .user-menu-body {
-      padding: 8px 0;
-    }
+    .user-menu-body { padding: 8px 0; }
     
     .user-menu-item {
       display: flex;
@@ -95,32 +57,18 @@
       gap: 12px;
       padding: 12px 16px;
       color: white;
-      text-decoration: none;
-      transition: background 0.2s;
-      cursor: pointer;
-      border: none;
       background: none;
+      border: none;
       width: 100%;
       text-align: left;
+      cursor: pointer;
+      transition: background 0.2s;
       font-size: 0.9rem;
     }
     
-    .user-menu-item:hover {
-      background: rgba(255, 255, 255, 0.08);
-    }
-    
-    .user-menu-item.danger {
-      color: #ef4444;
-    }
-    
-    .user-menu-item.danger:hover {
-      background: rgba(239, 68, 68, 0.1);
-    }
-    
-    /* Fix del botón de usuario */
-    .logout {
-      position: relative;
-    }
+    .user-menu-item:hover { background: rgba(255, 255, 255, 0.08); }
+    .user-menu-item.danger { color: #ef4444; }
+    .user-menu-item.danger:hover { background: rgba(239, 68, 68, 0.1); }
   </style>
 </head>
 <body>
@@ -128,7 +76,7 @@
   <div class="hero__bg" aria-hidden="true"></div>
   <div class="hero__overlay" aria-hidden="true"></div>
 
-  <!-- ==================== TOPBAR ==================== -->
+  <!-- Topbar -->
   <header class="topbar">
     <a class="brand btn-reset" href="#" title="CopaLink">CopaLink</a>
     
@@ -138,19 +86,16 @@
       
       <!-- Dropdown de Usuario -->
       <div class="user-status-wrap user-dropdown">
-        <button class="logout" id="btnUserMenu" type="button" title="Cuenta" aria-label="Menú de cuenta">
-          <span class="logout-icon" style="font-size: 20px;">👤</span>
+        <button class="logout" id="btnUserMenu" type="button" title="Cuenta">
+          <span style="font-size: 22px;">👤</span>
         </button>
-        <span class="online-dot" aria-hidden="true"></span>
+        <span class="online-dot"></span>
         
         <!-- Menú desplegable -->
         <div class="user-menu" id="userMenu">
           <div class="user-menu-header">
-            <div class="user-menu-avatar" id="userAvatar">U</div>
-            <div class="user-menu-info">
-              <div class="user-menu-name" id="userName">Usuario</div>
-              <div class="user-menu-email" id="userEmail">email@ejemplo.com</div>
-            </div>
+            <div class="user-menu-name" id="userName">Usuario</div>
+            <div class="user-menu-email" id="userEmail">email@ejemplo.com</div>
           </div>
           <div class="user-menu-body">
             <button class="user-menu-item danger" id="btnLogout" type="button">
@@ -163,36 +108,29 @@
     </div>
   </header>
 
-  <!-- ==================== LAYOUT PRINCIPAL ==================== -->
+  <!-- Layout principal -->
   <div class="chat-layout">
     
-    <!-- ========== SIDEBAR ========== -->
+    <!-- Sidebar -->
     <aside class="sidebar">
-      <!-- Buscador con botón + -->
       <div class="sidebar-search">
         <div class="search-wrap">
-          <button class="create-group-btn" id="btnCreateGroup" title="Crear grupo" aria-label="Crear grupo">+</button>
-          <input class="form-control" placeholder="Buscar chats..." id="searchInput" autocomplete="off">
+          <button class="create-group-btn" id="btnCreateGroup" title="Crear grupo">+</button>
+          <input class="form-control" placeholder="Buscar chats..." id="searchInput">
         </div>
       </div>
 
-      <!-- Tabs -->
       <div class="sidebar-tabs">
         <button class="tab active" data-tab="all">Todos</button>
         <button class="tab" data-tab="groups">Grupos</button>
         <button class="tab" data-tab="private">Privados</button>
       </div>
 
-      <!-- Lista de chats -->
-      <div class="chatlist" id="chatlist">
-        <!-- Los chats se cargarán dinámicamente desde la BD -->
-      </div>
+      <div class="chatlist" id="chatlist"></div>
     </aside>
 
-    <!-- ========== CONTENIDO PRINCIPAL ========== -->
+    <!-- Contenido principal -->
     <main class="main-content">
-      
-      <!-- Placeholder inicial (cuando no hay chat abierto) -->
       <div class="placeholder card glass" id="placeholderPromo">
         <div class="promo-content">
           <h2 class="promo-title">Bienvenido a CopaLink</h2>
@@ -203,10 +141,7 @@
         </div>
       </div>
 
-      <!-- Ventana de conversación (oculta por defecto) -->
       <div class="conversation card glass" id="conversation" hidden>
-        
-        <!-- Header de conversación -->
         <div class="conv-header">
           <div class="conv-peer">
             <div class="conv-avatar" id="convAvatar">A</div>
@@ -217,26 +152,21 @@
           </div>
           
           <div class="conv-actions">
-            <!-- Botón Videollamada (solo chats privados) -->
-            <button class="icon-btn" id="btnVideo" title="Videollamada" aria-label="Videollamada" hidden>
+            <button class="icon-btn" id="btnVideo" title="Videollamada" hidden>
               <img src="assets/img/videollamada.png" alt="Videollamada" class="icon-img" onerror="this.style.display='none'">
             </button>
 
-            <!-- Menú de opciones -->
             <div class="more-wrap">
-              <button class="icon-btn" id="btnMore" title="Más acciones" aria-expanded="false" aria-controls="chatMenu">
+              <button class="icon-btn" id="btnMore" title="Más acciones">
                 <span class="hamb"></span>
               </button>
 
               <div class="chat-menu card glass" id="chatMenu" hidden>
                 <button class="menu-item" id="mEncrypt" type="button">🔒 Cifrar este chat</button>
                 <button class="menu-item" id="mTasks" type="button">✅ Tareas</button>
-                <button class="menu-item" id="mAdd" type="button" hidden>➕ Agregar a alguien</button>
-                <button class="menu-item" id="mEmail" type="button" hidden>📧 Enviar correo</button>
               </div>
             </div>
 
-            <!-- Botón Atrás (volver a lista) -->
             <button class="icon-btn conv-back-btn" id="convBack" title="Volver">
               <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M15 10H5m0 0l4-4m-4 4l4 4"/>
@@ -245,14 +175,10 @@
           </div>
         </div>
 
-        <!-- Cuerpo de mensajes -->
-        <div class="conv-body" id="convBody">
-          <!-- Los mensajes se renderizan aquí dinámicamente -->
-        </div>
+        <div class="conv-body" id="convBody"></div>
 
-        <!-- Footer (input de mensaje) -->
         <div class="conv-footer">
-          <input type="text" class="msg-input" id="msgInput" placeholder="Escribe un mensaje..." autocomplete="off">
+          <input type="text" class="msg-input" id="msgInput" placeholder="Escribe un mensaje...">
           <button class="send-btn" id="sendBtn" title="Enviar">
             <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
               <path d="M2 12l18-10-10 18-2-8-6-0z"/>
@@ -260,18 +186,15 @@
           </button>
         </div>
       </div>
-
     </main>
   </div>
 
-  <!-- ==================== SIDE PANEL (Tareas, etc.) ==================== -->
+  <!-- Side Panel -->
   <div class="side-panel card glass" id="sidePanel" hidden>
     <div class="sp-header">
       <h3 class="sp-title" id="spTitle">Panel</h3>
-      <button class="sp-close" id="spClose" aria-label="Cerrar panel">&times;</button>
+      <button class="sp-close" id="spClose">&times;</button>
     </div>
-
-    <!-- Panel de Tareas -->
     <div class="sp-body" id="spTasksBody" hidden>
       <div class="sp-input-group">
         <input type="text" class="form-control" id="taskInput" placeholder="Nueva tarea...">
@@ -279,30 +202,15 @@
       </div>
       <div class="sp-list" id="taskList"></div>
     </div>
-
-    <!-- Panel de Agregar Miembros -->
-    <div class="sp-body" id="spAddBody" hidden>
-      <div class="sp-input-group">
-        <input type="text" class="form-control" id="addInput" placeholder="Email del usuario...">
-        <button class="btn btn-success btn-sm" id="addMemberBtn">Agregar</button>
-      </div>
-      <div class="sp-list" id="addedList"></div>
-    </div>
-
-    <!-- Panel de Email -->
-    <div class="sp-body" id="spEmailBody" hidden>
-      <textarea class="form-control" id="emailDesc" rows="4" placeholder="Escribe tu mensaje..."></textarea>
-      <button class="btn btn-success mt-2" id="sendEmailBtn">Enviar Correo</button>
-    </div>
   </div>
 
-  <!-- ==================== MODAL DE CONFIRMACIÓN ==================== -->
-  <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+  <!-- Modal de confirmación -->
+  <div class="modal fade" id="confirmModal" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Confirmar</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <p id="confirmMsg"></p>
@@ -315,56 +223,45 @@
     </div>
   </div>
 
-  <!-- ==================== SCRIPTS ==================== -->
-  <!-- Bootstrap -->
+  <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-  
-  <!-- ⭐ IMPORTANTE: Orden de scripts -->
   <script src="js/realtime-chat.js"></script>
   <script src="js/chats.js"></script>
   
-  <!-- Script para el dropdown de usuario -->
+  <!-- Script del dropdown -->
   <script>
-    // Dropdown de usuario
     const btnUserMenu = document.getElementById('btnUserMenu');
     const userMenu = document.getElementById('userMenu');
     
-    if (btnUserMenu && userMenu) {
-      btnUserMenu.addEventListener('click', (e) => {
-        e.stopPropagation();
-        userMenu.classList.toggle('show');
-      });
-      
-      // Cerrar al hacer click fuera
-      document.addEventListener('click', (e) => {
-        if (!userMenu.contains(e.target) && e.target !== btnUserMenu) {
-          userMenu.classList.remove('show');
-        }
-      });
-    }
+    // Toggle dropdown
+    btnUserMenu?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      userMenu.classList.toggle('show');
+    });
+    
+    // Cerrar al hacer click fuera
+    document.addEventListener('click', (e) => {
+      if (userMenu && !userMenu.contains(e.target) && e.target !== btnUserMenu) {
+        userMenu.classList.remove('show');
+      }
+    });
     
     // Cargar datos del usuario
-    async function loadUserData() {
+    async function loadUserInfo() {
       try {
         const response = await fetch('/api/auth.php?action=check');
         const data = await response.json();
         
         if (data.authenticated && data.user) {
-          const userName = document.getElementById('userName');
-          const userEmail = document.getElementById('userEmail');
-          const userAvatar = document.getElementById('userAvatar');
-          
-          if (userName) userName.textContent = data.user.username;
-          if (userEmail) userEmail.textContent = data.user.email;
-          if (userAvatar) userAvatar.textContent = data.user.username.charAt(0).toUpperCase();
+          document.getElementById('userName').textContent = data.user.username || 'Usuario';
+          document.getElementById('userEmail').textContent = data.user.email || '';
         }
       } catch (error) {
-        console.error('Error cargando datos del usuario:', error);
+        console.error('Error cargando usuario:', error);
       }
     }
     
-    // Cargar al iniciar
-    loadUserData();
+    loadUserInfo();
   </script>
 </body>
 </html>
