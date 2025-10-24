@@ -8,7 +8,7 @@
   <!-- Bootstrap -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-  <!-- Estilos compartidos -->
+  <!-- Estilos -->
   <link rel="stylesheet" href="css/landing.css" />
   <link rel="stylesheet" href="css/chats.css" />
 
@@ -25,8 +25,35 @@
       background: rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12);
       font-weight:600;
     }
-    .chip button{ border:0; background:transparent; color:#fff; line-height:1; font-size:18px; }
+    .chip button{ 
+      border:0; background:transparent; color:#fff; line-height:1; font-size:18px; 
+      cursor:pointer; padding:0 4px;
+    }
     .cg-muted{ color: rgba(255,255,255,.7); }
+    .search-results{
+      background: rgba(0,0,0,.3);
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 8px;
+    }
+    .search-result-item{
+      padding: 12px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,.1);
+      transition: all 0.2s;
+    }
+    .search-result-item:hover{
+      background: rgba(255,255,255,.1);
+    }
+    .search-result-item:last-child{ border-bottom: none; }
+    .user-avatar{
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin-right: 12px;
+    }
   </style>
 </head>
 <body>
@@ -39,119 +66,232 @@
     <a class="brand btn-reset" href="chats.html" title="Volver a chats">CopaLink</a>
   </header>
 
-    <main class="cg-wrap">
+  <main class="cg-wrap">
     <div class="cg-card p-4 shadow-lg">
       <h2 class="fw-bold mb-2">Crear grupo</h2>
-      <p class="mb-4 cg-muted">Ponle un nombre al grupo y agrega miembros por correo o nombre.</p>
+      <p class="mb-4 cg-muted">Ponle un nombre al grupo y agrega miembros por correo electrónico.</p>
 
       <form id="groupForm" class="d-grid gap-3" novalidate>
         <div>
-          <label class="form-label fw-semibold" for="groupName">Nombre del grupo</label>
-          <input id="groupName" class="form-control" placeholder=" Ingresa nombre del grupo" required>
+          <label class="form-label fw-semibold" for="groupName">Nombre del grupo *</label>
+          <input id="groupName" class="form-control" placeholder="Ingresa nombre del grupo" required>
         </div>
 
         <div>
-          <label class="form-label fw-semibold" for="memberInput">Agregar miembro</label>
+          <label class="form-label fw-semibold" for="memberInput">Agregar miembro por correo</label>
           <div class="input-group">
-            <input id="memberInput" class="form-control" placeholder="Correo o nombre">
-            <button id="addMemberBtn" class="btn btn-success" type="button">Agregar</button>
+            <input id="memberInput" class="form-control" placeholder="ejemplo@correo.com" type="email">
+            <button id="searchBtn" class="btn btn-success" type="button">Buscar</button>
           </div>
+          <div id="searchResults" class="search-results" hidden></div>
           <div id="membersChips" class="mt-2" aria-live="polite"></div>
+          <small class="text-muted d-block mt-1">
+            💡 Escribe el correo y presiona "Buscar" para agregar miembros
+          </small>
         </div>
 
         <div class="d-flex gap-2 justify-content-end mt-2">
           <a href="chats.html" class="btn btn-outline-light">Cancelar</a>
-          <button class="btn btn-success fw-bold" type="submit">Crear grupo</button>
+          <button class="btn btn-success fw-bold" type="submit">
+            <span id="btnText">Crear grupo</span>
+          </button>
         </div>
       </form>
     </div>
   </main>
 
-    <script>
-    // Estado local de miembros (Mantenido por si el usuario lo necesita, pero ignorado en el API call por ahora)
-    const members = new Set();
+  <script>
+    // Estado
+    const memberEmails = new Set();
+    const memberData = new Map();
 
-    // Selectores
-    const groupForm    = document.getElementById('groupForm');
-    const groupName    = document.getElementById('groupName');
-    const memberInput  = document.getElementById('memberInput');
-    const addMemberBtn = document.getElementById('addMemberBtn');
+    // Elementos
+    const groupForm = document.getElementById('groupForm');
+    const groupName = document.getElementById('groupName');
+    const memberInput = document.getElementById('memberInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const searchResults = document.getElementById('searchResults');
     const membersChips = document.getElementById('membersChips');
+    const btnText = document.getElementById('btnText');
 
-    // Render chips
-    function renderChips(){
+    // Verificar autenticación
+    async function checkAuth() {
+      try {
+        const response = await fetch('/api/auth.php?action=check');
+        const data = await response.json();
+        if (!data.authenticated) {
+          window.location.href = 'login.html';
+        }
+      } catch (error) {
+        window.location.href = 'login.html';
+      }
+    }
+
+    checkAuth();
+
+    // Buscar usuarios por email
+    searchBtn.addEventListener('click', async () => {
+      const email = memberInput.value.trim();
+      if (!email) {
+        alert('Ingresa un correo electrónico');
+        return;
+      }
+
+      searchBtn.disabled = true;
+      searchBtn.textContent = 'Buscando...';
+      searchResults.hidden = true;
+      searchResults.innerHTML = '';
+
+      try {
+        const response = await fetch(`/api/groups.php?action=search_users&email=${encodeURIComponent(email)}`);
+        const data = await response.json();
+
+        if (data.success && data.users.length > 0) {
+          searchResults.hidden = false;
+          
+          data.users.forEach(user => {
+            const item = document.createElement('div');
+            item.className = 'search-result-item d-flex align-items-center';
+            item.innerHTML = `
+              <img src="${user.avatar_url || 'assets/img/default-avatar.png'}" 
+                   class="user-avatar" 
+                   onerror="this.src='assets/img/default-avatar.png'">
+              <div>
+                <div class="fw-semibold">${escapeHtml(user.username)}</div>
+                <div class="small text-muted">${escapeHtml(user.email)}</div>
+              </div>
+            `;
+            
+            item.addEventListener('click', () => {
+              addMember(user.email, user.username);
+              searchResults.hidden = true;
+              memberInput.value = '';
+            });
+            
+            searchResults.appendChild(item);
+          });
+        } else {
+          searchResults.hidden = false;
+          searchResults.innerHTML = '<div class="p-3 text-center text-muted">No se encontraron usuarios con ese correo</div>';
+        }
+
+      } catch (error) {
+        console.error('Error buscando usuarios:', error);
+        alert('Error al buscar usuarios. Intenta de nuevo.');
+      } finally {
+        searchBtn.disabled = false;
+        searchBtn.textContent = 'Buscar';
+      }
+    });
+
+    // Permitir buscar con Enter
+    memberInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        searchBtn.click();
+      }
+    });
+
+    // Agregar miembro
+    function addMember(email, username) {
+      if (memberEmails.has(email)) {
+        alert('Este usuario ya está agregado');
+        return;
+      }
+
+      memberEmails.add(email);
+      memberData.set(email, username);
+      renderChips();
+    }
+
+    // Renderizar chips
+    function renderChips() {
       membersChips.innerHTML = '';
-      [...members].forEach(m => {
+      
+      [...memberEmails].forEach(email => {
+        const username = memberData.get(email);
         const chip = document.createElement('span');
         chip.className = 'chip';
-        chip.innerHTML = `${m} <button type="button" aria-label="Quitar">&times;</button>`;
+        chip.innerHTML = `
+          ${escapeHtml(username)} (${escapeHtml(email)})
+          <button type="button" aria-label="Quitar">&times;</button>
+        `;
+        
         chip.querySelector('button').addEventListener('click', () => {
-          members.delete(m);
+          memberEmails.delete(email);
+          memberData.delete(email);
           renderChips();
         });
+        
         membersChips.appendChild(chip);
       });
     }
 
-    // Agregar miembro
-    function addMember(){
-      const raw = (memberInput.value || '').trim();
-      if (!raw) return;
-      const val = raw.replace(/\s+/g,' ');
-      if (members.has(val)) { memberInput.value=''; memberInput.focus(); return; }
-      members.add(val);
-      memberInput.value = '';
-      renderChips();
-      memberInput.focus();
-    }
-
-    addMemberBtn.addEventListener('click', addMember);
-    memberInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter'){ e.preventDefault(); addMember(); }
-    });
-
-    // Función de crear grupo REAL
+    // Crear grupo
     groupForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = (groupName.value || '').trim();
-      if (!name){ groupName.focus(); return; }
+      
+      const name = groupName.value.trim();
+      if (!name) {
+        groupName.focus();
+        return;
+      }
 
-      // Deshabilitar formulario
       const submitBtn = groupForm.querySelector('[type="submit"]');
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Creando...';
+      btnText.textContent = 'Creando...';
 
-      // ** Llamada a la API real **
       try {
-        const response = await fetch('api/groups.php?action=create', {
+        const response = await fetch('/api/groups.php?action=create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: name,
-            description: 'Grupo creado en CopaLink',
-            members: [] // Enviamos vacío, la API solo acepta user_ids
+            description: `Grupo creado en CopaLink - ${new Date().toLocaleDateString()}`,
+            member_emails: [...memberEmails]
           })
         });
 
         const data = await response.json();
 
         if (data.success) {
-          // Indicar a chats cuál abrir al regresar
+          // Guardar ID del grupo para abrirlo en chats.html
           localStorage.setItem('open_group_id', data.group_id);
           
-          // Redirigir a la lista de chats (chats.js lo abrirá)
+          // Mostrar mensaje
+          const message = data.members_added > 0 
+            ? `Grupo creado con ${data.members_added} miembro(s)` 
+            : 'Grupo creado (solo tú por ahora)';
+          
+          alert(message);
+          
+          // Redirigir
           window.location.href = 'chats.html';
         } else {
-          alert('Error al crear el grupo: ' + (data.error || 'Desconocido'));
+          alert('Error: ' + (data.error || 'No se pudo crear el grupo'));
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Crear grupo';
+          btnText.textContent = 'Crear grupo';
         }
 
       } catch (error) {
-        console.error('Error de red al crear grupo:', error);
+        console.error('Error:', error);
         alert('Error de conexión. Intenta de nuevo.');
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Crear grupo';
+        btnText.textContent = 'Crear grupo';
+      }
+    });
+
+    // Utilidad para escapar HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Cerrar resultados al hacer click fuera
+    document.addEventListener('click', (e) => {
+      if (!searchResults.contains(e.target) && e.target !== memberInput && e.target !== searchBtn) {
+        searchResults.hidden = true;
       }
     });
   </script>
