@@ -527,7 +527,7 @@ async function logout() {
 /* =========================
    UTILIDADES
 ========================== */
-const ChatUtils = {
+/*const ChatUtils = {
   escapeHtml: (text) => {
     const div = document.createElement('div');
     div.textContent = text;
@@ -579,7 +579,7 @@ function openConfirm(message, callback) {
       if (callback) callback();
     };
   }
-}
+}*/
 
 /* =========================
    EVENT LISTENERS
