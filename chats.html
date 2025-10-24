@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CopaLink — Chats</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/landing.css" />
+  <link rel="stylesheet" href="css/chats.css" />
+</head>
+<body>
+  <div class="hero__bg" aria-hidden="true"></div>
+  <div class="hero__overlay" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <button class="brand btn-reset" id="btnHome">CopaLink</button>
+
+    <div class="topbar-actions">
+      <a href="simulador.html" class="btn-simulador">Simulador</a>
+
+      <div class="user-menu">
+        <div class="user-status-wrap">
+          <button class="logout" id="btnUserMenu" aria-expanded="false" aria-controls="userDropdown">
+            <img src="assets/img/icon_iniciarsesion.png" alt="Cuenta" class="logout-icon">
+          </button>
+          <span class="online-dot"></span>
+        </div>
+
+        <div class="menu card glass" id="userDropdown" hidden>
+          <div class="menu-header">
+            <div class="menu-name user-name">Cargando...</div>
+          </div>
+
+          <div class="menu-row">
+            <img class="gem-icon" src="assets/img/gema.png" alt="Gemas" />
+            <span class="gem-count">0</span>
+          </div>
+
+          <button class="menu-item" id="btnEncrypt">Cifrar chats</button>
+          <button class="menu-item danger" id="btnLogoutMenu">Cerrar sesión</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="chat-layout">
+    <aside class="sidebar">
+      <div class="sidebar-search">
+        <div class="search-wrap">
+          <a class="create-group-btn" id="btnCreateGroup" href="crear-grupo.html" title="Crear grupo">+</a>
+          <input type="search" class="form-control form-control-sm search-input" placeholder="Buscar o iniciar nuevo chat">
+        </div>
+      </div>
+
+      <div class="sidebar-tabs">
+        <button class="tab active">Todos</button>
+        <button class="tab">Chats</button>
+        <button class="tab">Grupos</button>
+      </div>
+
+      <nav class="chatlist">
+        <a class="chatitem" href="#" data-chat="ana" data-name="Ana Martínez" data-type="private">
+          <div class="avatar online">A</div>
+          <div class="meta">
+            <div class="row1"><span class="name">Ana Martínez</span><time>10:12 p.m.</time></div>
+            <div class="row2"><span class="preview">¿Listo para mañana?</span><span class="badge">2</span></div>
+          </div>
+        </a>
+
+        <a class="chatitem" href="#" data-chat="grupo" data-name="GPO FCFM" data-type="group">
+          <div class="avatar grp">👥</div>
+          <div class="meta">
+            <div class="row1"><span class="name">GPO FCFM</span><time>9:45 p.m.</time></div>
+            <div class="row2"><span class="preview">Tú: Nos juntamos hoy o que?</span></div>
+          </div>
+        </a>
+
+        <a class="chatitem" href="#" data-chat="diego" data-name="Diego" data-type="private">
+          <div class="avatar online">D</div>
+          <div class="meta">
+            <div class="row1"><span class="name">Diego</span><time>9:10 p.m.</time></div>
+            <div class="row2"><span class="preview">Bro, el parley está listo</span></div>
+          </div>
+        </a>
+      </nav>
+    </aside>
+
+    <section class="panel">
+      <div class="promo card glass" id="placeholderPromo">
+        <div class="promo-body">
+          <div class="promo-emoji">🏆</div>
+          <h2 class="promo-title">Vive el Mundial con el Simulador</h2>
+          <p class="promo-text">Crea llaves, pronostica resultados y compite con tus amigos. ¡Demuestra quién sabe más de fútbol!</p>
+          <a href="simulador.html" class="btn btn-simulador btn-lg">Ir al Simulador</a>
+          <p class="promo-note">Tus chats siguen aquí cuando regreses.</p>
+        </div>
+      </div>
+
+      <div class="conversation card glass" id="conversation" hidden>
+        <div class="conv-header">
+          <div class="conv-peer">
+            <div class="conv-avatar" id="convAvatar">A</div>
+            <div>
+              <div class="conv-name" id="convName">Nombre</div>
+              <div class="conv-sub">en línea</div>
+            </div>
+          </div>
+          <div class="conv-actions">
+            <button class="icon-btn" id="btnVideo" title="Videollamada" aria-label="Videollamada" hidden>
+              <img src="assets/img/videollamada.png" alt="Videollamada" class="icon-img">
+            </button>
+
+            <div class="more-wrap">
+              <button class="icon-btn" id="btnMore" title="Más acciones" aria-expanded="false" aria-controls="chatMenu">
+                <span class="hamb"></span>
+              </button>
+
+              <div class="chat-menu card glass" id="chatMenu" hidden>
+                <button class="menu-item" id="mEncrypt" type="button">Cifrar este chat</button>
+                <button class="menu-item" id="mTasks" type="button">Tareas</button>
+                <button class="menu-item" id="mAdd" type="button" hidden>Agregar a alguien</button>
+                <button class="menu-item" id="mEmail" type="button" hidden>Correo</button>
+              </div>
+            </div>
+
+            <button class="btn btn-sm btn-outline-light" id="convBack" title="Volver a chats">←</button>
+          </div>
+        </div>
+
+        <div class="conv-body" id="convBody"></div>
+
+        <div class="conv-compose">
+          <div class="attach-wrap">
+            <button id="btnAttach" class="icon-btn" type="button" title="Adjuntar">+</button>
+
+            <div id="attachMenu" class="attach-menu" hidden>
+              <button class="attach-item" id="attachFile" type="button">
+                <span class="ai-icon"><img src="./assets/img/archivo.png" alt="Documento"></span>
+                <span class="ai-label">Documento</span>
+              </button>
+              <button class="attach-item" id="attachImage" type="button">
+                <span class="ai-icon"><img src="./assets/img/foto.png" alt="Foto"></span>
+                <span class="ai-label">Foto</span>
+              </button>
+              <button class="attach-item" id="attachLocation" type="button">
+                <span class="ai-icon"><img src="./assets/img/ubicacion.png" alt="Ubicación"></span>
+                <span class="ai-label">Ubicación</span>
+              </button>
+            </div>
+          </div>
+
+          <input type="text" id="msgInput" class="form-control" placeholder="Escribe un mensaje" />
+
+          <button id="sendBtn" class="btn btn-success fw-bold" type="button">Enviar</button>
+
+          <input type="file" id="fileImage" accept="image/*" hidden>
+          <input type="file" id="fileAny" hidden>
+        </div>
+      </div>
+
+      <aside id="sidePanel" class="sidepanel card glass" hidden>
+        <header class="sp-header">
+          <h3 id="spTitle">Administrador de tareas</h3>
+          <button class="sp-close" id="spClose" title="Cerrar">✕</button>
+        </header>
+
+        <div class="sp-body" id="spTasks" hidden>
+          <form id="taskCreateForm" class="sp-row">
+            <input id="taskInput" class="form-control" placeholder="Nueva tarea…" />
+            <button class="btn btn-success" id="taskCreateBtn" type="submit">Crear</button>
+          </form>
+
+          <div class="sp-list" id="taskList"></div>
+
+          <div class="sp-actions">
+            <button class="btn btn-success" id="taskConfirmBtn">Confirmar realizadas</button>
+          </div>
+        </div>
+
+        <div class="sp-body" id="spAdd" hidden>
+          <form id="addForm" class="sp-row">
+            <input id="addInput" class="form-control" placeholder="Correo o nombre…" />
+            <button class="btn btn-success" id="addBtn" type="submit">Agregar</button>
+          </form>
+
+          <div class="sp-hint">* Se enviará invitación al chat.</div>
+          <div class="sp-list" id="addedList"></div>
+        </div>
+
+        <div class="sp-body" id="spEmail" hidden>
+          <form id="emailForm" class="d-grid gap-3">
+            <div>
+              <label class="form-label fw-semibold" for="emailInput">Destinatario</label>
+              <input id="emailInput" class="form-control" value="tu@correo.com" readonly>
+            </div>
+            <div>
+              <label class="form-label fw-semibold" for="emailDesc">Descripción</label>
+              <textarea id="emailDesc" class="form-control" rows="4" placeholder="Escribe tu descripción aquí"></textarea>
+            </div>
+            <button id="sendEmailBtn" class="btn btn-success fw-bold mt-2" type="submit">Enviar</button>
+          </form>
+        </div>
+      </aside>
+    </section>
+  </main>
+     
+  <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-modal">
+        <div class="modal-header border-0">
+          <h5 class="modal-title fw-bold">Confirmación</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p id="confirmMessage"></p>
+        </div>
+        <div class="modal-footer border-0 d-flex gap-2">
+          <button type="button" class="btn btn-danger fw-bold" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-success fw-bold" id="confirmOk">Aceptar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <!-- IMPORTANTE: Script de verificación de autenticación PRIMERO -->
+  <script src="js/auth-check.js"></script>
+  
+  <!-- Script de funcionalidad de chats -->
+  <script src="js/chats.js"></script>
+  
+  <script>
+    // Conectar botón de logout con la función
+    document.getElementById('btnLogoutMenu').addEventListener('click', () => {
+      window.logout();
+    });
+  </script>
+</body>
+</html>
