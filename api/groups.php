@@ -1,27 +1,35 @@
 <?php
 /**
- * groups.php - COMPLETO
+ * groups.php - CORREGIDO COMPLETAMENTE
  * API para gestión de grupos con búsqueda por email
  */
 
+// Configurar headers ANTES de cualquier salida
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Content-Type: application/json; charset=UTF-8');
 
+// Manejar preflight OPTIONS
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
 
+// Iniciar sesión
 session_start();
 
-require_once 'config.php';
+// Incluir configuración
+require_once __DIR__ . '/config.php';
 
+// Verificar autenticación
 if (!isset($_SESSION['user_id'])) {
     echo json_encode(['success' => false, 'error' => 'No autenticado']);
     exit();
 }
+
+// Obtener conexión a la base de datos
+$conn = getDBConnection();
 
 $action = $_GET['action'] ?? $_POST['action'] ?? '';
 $userId = $_SESSION['user_id'];
@@ -45,7 +53,7 @@ try {
             break;
             
         default:
-            throw new Exception('Acción no válida');
+            throw new Exception('Acción no válida: ' . $action);
     }
 } catch (Exception $e) {
     http_response_code(400);
@@ -54,6 +62,8 @@ try {
         'error' => $e->getMessage()
     ]);
 }
+
+closeDBConnection($conn);
 
 /**
  * Obtener grupos del usuario
@@ -74,6 +84,11 @@ function getMyGroups($conn, $userId) {
         GROUP BY g.id, g.name, g.description, g.avatar_url, g.created_at, g.updated_at
         ORDER BY g.updated_at DESC
     ");
+    
+    if (!$stmt) {
+        throw new Exception('Error en la consulta: ' . $conn->error);
+    }
+    
     $stmt->bind_param('i', $userId);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -95,6 +110,8 @@ function getMyGroups($conn, $userId) {
         'success' => true,
         'groups' => $groups
     ]);
+    
+    $stmt->close();
 }
 
 /**
@@ -103,71 +120,116 @@ function getMyGroups($conn, $userId) {
 function createGroup($conn, $userId) {
     $data = json_decode(file_get_contents('php://input'), true);
     
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        throw new Exception('JSON inválido: ' . json_last_error_msg());
+    }
+    
     $name = trim($data['name'] ?? '');
     $description = trim($data['description'] ?? '');
-    $memberEmails = $data['member_emails'] ?? []; // Ahora recibimos emails
+    $memberEmails = $data['member_emails'] ?? [];
     
     if (empty($name)) {
         throw new Exception('El nombre del grupo es requerido');
     }
     
-    // Crear grupo
-    $stmt = $conn->prepare("
-        INSERT INTO grupo (name, description, created_by) 
-        VALUES (?, ?, ?)
-    ");
-    $stmt->bind_param('ssi', $name, $description, $userId);
+    // Iniciar transacción
+    $conn->begin_transaction();
     
-    if (!$stmt->execute()) {
-        throw new Exception('Error al crear grupo: ' . $conn->error);
-    }
-    
-    $groupId = $conn->insert_id;
-    
-    // Agregar creador como admin
-    $stmt = $conn->prepare("
-        INSERT INTO group_members (group_id, user_id, role) 
-        VALUES (?, ?, 'admin')
-    ");
-    $stmt->bind_param('ii', $groupId, $userId);
-    $stmt->execute();
-    
-    // Agregar miembros por email
-    $addedCount = 0;
-    if (!empty($memberEmails)) {
+    try {
+        // Crear grupo
         $stmt = $conn->prepare("
-            SELECT id FROM users WHERE email = ? AND id != ?
+            INSERT INTO grupo (name, description, created_by) 
+            VALUES (?, ?, ?)
         ");
         
-        $insertStmt = $conn->prepare("
-            INSERT IGNORE INTO group_members (group_id, user_id, role) 
-            VALUES (?, ?, 'member')
+        if (!$stmt) {
+            throw new Exception('Error al preparar consulta: ' . $conn->error);
+        }
+        
+        $stmt->bind_param('ssi', $name, $description, $userId);
+        
+        if (!$stmt->execute()) {
+            throw new Exception('Error al crear grupo: ' . $stmt->error);
+        }
+        
+        $groupId = $conn->insert_id;
+        $stmt->close();
+        
+        // Agregar creador como admin
+        $stmt = $conn->prepare("
+            INSERT INTO group_members (group_id, user_id, role) 
+            VALUES (?, ?, 'admin')
         ");
         
-        foreach ($memberEmails as $email) {
-            $email = trim($email);
-            if (empty($email)) continue;
+        if (!$stmt) {
+            throw new Exception('Error al preparar consulta de miembro: ' . $conn->error);
+        }
+        
+        $stmt->bind_param('ii', $groupId, $userId);
+        
+        if (!$stmt->execute()) {
+            throw new Exception('Error al agregar creador: ' . $stmt->error);
+        }
+        
+        $stmt->close();
+        
+        // Agregar miembros por email
+        $addedCount = 0;
+        if (!empty($memberEmails) && is_array($memberEmails)) {
+            $stmt = $conn->prepare("
+                SELECT id FROM users WHERE email = ? AND id != ?
+            ");
             
-            $stmt->bind_param('si', $email, $userId);
-            $stmt->execute();
-            $result = $stmt->get_result();
+            if (!$stmt) {
+                throw new Exception('Error al preparar búsqueda de usuarios: ' . $conn->error);
+            }
             
-            if ($row = $result->fetch_assoc()) {
-                $memberId = $row['id'];
-                $insertStmt->bind_param('ii', $groupId, $memberId);
-                if ($insertStmt->execute() && $insertStmt->affected_rows > 0) {
-                    $addedCount++;
+            $insertStmt = $conn->prepare("
+                INSERT IGNORE INTO group_members (group_id, user_id, role) 
+                VALUES (?, ?, 'member')
+            ");
+            
+            if (!$insertStmt) {
+                throw new Exception('Error al preparar inserción de miembros: ' . $conn->error);
+            }
+            
+            foreach ($memberEmails as $email) {
+                $email = trim($email);
+                if (empty($email)) continue;
+                
+                $stmt->bind_param('si', $email, $userId);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                
+                if ($row = $result->fetch_assoc()) {
+                    $memberId = $row['id'];
+                    $insertStmt->bind_param('ii', $groupId, $memberId);
+                    
+                    if ($insertStmt->execute() && $insertStmt->affected_rows > 0) {
+                        $addedCount++;
+                    }
                 }
             }
+            
+            $stmt->close();
+            $insertStmt->close();
         }
+        
+        // Confirmar transacción
+        $conn->commit();
+        
+        echo json_encode([
+            'success' => true,
+            'group_id' => $groupId,
+            'members_added' => $addedCount,
+            'message' => 'Grupo creado exitosamente'
+        ]);
+        
+    } catch (Exception $e) {
+        // Revertir transacción en caso de error
+        $conn->rollback();
+        throw $e;
     }
-    
-    echo json_encode([
-        'success' => true,
-        'group_id' => $groupId,
-        'members_added' => $addedCount,
-        'message' => 'Grupo creado exitosamente'
-    ]);
 }
 
 /**
@@ -189,6 +251,11 @@ function searchUsersByEmail($conn, $userId) {
         WHERE id != ? AND email LIKE ?
         LIMIT 10
     ");
+    
+    if (!$stmt) {
+        throw new Exception('Error en la consulta: ' . $conn->error);
+    }
+    
     $stmt->bind_param('is', $userId, $searchTerm);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -209,6 +276,8 @@ function searchUsersByEmail($conn, $userId) {
         'success' => true,
         'users' => $users
     ]);
+    
+    $stmt->close();
 }
 
 /**
@@ -226,13 +295,21 @@ function getGroupDetails($conn, $userId) {
         SELECT 1 FROM group_members 
         WHERE group_id = ? AND user_id = ?
     ");
+    
+    if (!$stmt) {
+        throw new Exception('Error en la consulta: ' . $conn->error);
+    }
+    
     $stmt->bind_param('ii', $groupId, $userId);
     $stmt->execute();
     $result = $stmt->get_result();
     
     if ($result->num_rows === 0) {
+        $stmt->close();
         throw new Exception('No eres miembro de este grupo');
     }
+    
+    $stmt->close();
     
     // Obtener detalles del grupo
     $stmt = $conn->prepare("
@@ -248,10 +325,16 @@ function getGroupDetails($conn, $userId) {
         JOIN users u ON g.created_by = u.id
         WHERE g.id = ?
     ");
+    
+    if (!$stmt) {
+        throw new Exception('Error en la consulta: ' . $conn->error);
+    }
+    
     $stmt->bind_param('i', $groupId);
     $stmt->execute();
     $result = $stmt->get_result();
     $group = $result->fetch_assoc();
+    $stmt->close();
     
     if (!$group) {
         throw new Exception('Grupo no encontrado');
@@ -273,6 +356,11 @@ function getGroupDetails($conn, $userId) {
         WHERE gm.group_id = ?
         ORDER BY gm.role DESC, u.username ASC
     ");
+    
+    if (!$stmt) {
+        throw new Exception('Error en la consulta: ' . $conn->error);
+    }
+    
     $stmt->bind_param('i', $groupId);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -291,6 +379,8 @@ function getGroupDetails($conn, $userId) {
         ];
     }
     
+    $stmt->close();
+    
     echo json_encode([
         'success' => true,
         'group' => [
@@ -305,6 +395,4 @@ function getGroupDetails($conn, $userId) {
         'members' => $members
     ]);
 }
-
-$conn->close();
 ?>

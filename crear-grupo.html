@@ -54,6 +54,14 @@
       object-fit: cover;
       margin-right: 12px;
     }
+    .error-message {
+      background: rgba(220, 53, 69, 0.2);
+      border: 1px solid rgba(220, 53, 69, 0.5);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      color: #ff6b6b;
+    }
   </style>
 </head>
 <body>
@@ -70,6 +78,9 @@
     <div class="cg-card p-4 shadow-lg">
       <h2 class="fw-bold mb-2">Crear grupo</h2>
       <p class="mb-4 cg-muted">Ponle un nombre al grupo y agrega miembros por correo electrónico.</p>
+
+      <!-- Contenedor para mensajes de error -->
+      <div id="errorContainer"></div>
 
       <form id="groupForm" class="d-grid gap-3" novalidate>
         <div>
@@ -113,16 +124,53 @@
     const searchResults = document.getElementById('searchResults');
     const membersChips = document.getElementById('membersChips');
     const btnText = document.getElementById('btnText');
+    const errorContainer = document.getElementById('errorContainer');
+
+    // Función para mostrar errores
+    function showError(message, details = null) {
+      console.error('Error:', message, details);
+      
+      errorContainer.innerHTML = `
+        <div class="error-message">
+          <strong>⚠️ Error:</strong> ${escapeHtml(message)}
+          ${details ? `<br><small>${escapeHtml(details)}</small>` : ''}
+        </div>
+      `;
+      
+      // Ocultar error después de 5 segundos
+      setTimeout(() => {
+        errorContainer.innerHTML = '';
+      }, 5000);
+    }
+
+    // Función para limpiar errores
+    function clearErrors() {
+      errorContainer.innerHTML = '';
+    }
 
     // Verificar autenticación
     async function checkAuth() {
       try {
         const response = await fetch('/api/auth.php?action=check');
-        const data = await response.json();
+        const text = await response.text();
+        
+        // Verificar si la respuesta es JSON válido
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.error('Respuesta no es JSON:', text);
+          showError('Error del servidor', 'La respuesta no es válida. Verifica la configuración del servidor.');
+          window.location.href = 'login.html';
+          return;
+        }
+        
         if (!data.authenticated) {
           window.location.href = 'login.html';
         }
       } catch (error) {
+        console.error('Error verificando autenticación:', error);
+        showError('No se pudo verificar la sesión', error.message);
         window.location.href = 'login.html';
       }
     }
@@ -133,7 +181,7 @@
     searchBtn.addEventListener('click', async () => {
       const email = memberInput.value.trim();
       if (!email) {
-        alert('Ingresa un correo electrónico');
+        showError('Ingresa un correo electrónico');
         return;
       }
 
@@ -141,12 +189,29 @@
       searchBtn.textContent = 'Buscando...';
       searchResults.hidden = true;
       searchResults.innerHTML = '';
+      clearErrors();
 
       try {
-        const response = await fetch(`/api/groups.php?action=search_users&email=${encodeURIComponent(email)}`);
-        const data = await response.json();
+        const url = `/api/groups.php?action=search_users&email=${encodeURIComponent(email)}`;
+        console.log('Buscando usuarios en:', url);
+        
+        const response = await fetch(url);
+        const text = await response.text();
+        
+        console.log('Respuesta del servidor:', text);
+        
+        // Verificar si la respuesta es JSON válido
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.error('Error parseando JSON:', e);
+          console.error('Respuesta recibida:', text);
+          showError('Error del servidor', 'El servidor devolvió una respuesta inválida. Revisa la consola para más detalles.');
+          return;
+        }
 
-        if (data.success && data.users.length > 0) {
+        if (data.success && data.users && data.users.length > 0) {
           searchResults.hidden = false;
           
           data.users.forEach(user => {
@@ -170,14 +235,16 @@
             
             searchResults.appendChild(item);
           });
-        } else {
+        } else if (data.success) {
           searchResults.hidden = false;
           searchResults.innerHTML = '<div class="p-3 text-center text-muted">No se encontraron usuarios con ese correo</div>';
+        } else {
+          showError(data.error || 'Error al buscar usuarios');
         }
 
       } catch (error) {
         console.error('Error buscando usuarios:', error);
-        alert('Error al buscar usuarios. Intenta de nuevo.');
+        showError('Error de conexión al buscar usuarios', error.message);
       } finally {
         searchBtn.disabled = false;
         searchBtn.textContent = 'Buscar';
@@ -195,13 +262,14 @@
     // Agregar miembro
     function addMember(email, username) {
       if (memberEmails.has(email)) {
-        alert('Este usuario ya está agregado');
+        showError('Este usuario ya está agregado');
         return;
       }
 
       memberEmails.add(email);
       memberData.set(email, username);
       renderChips();
+      clearErrors();
     }
 
     // Renderizar chips
@@ -233,6 +301,7 @@
       
       const name = groupName.value.trim();
       if (!name) {
+        showError('El nombre del grupo es requerido');
         groupName.focus();
         return;
       }
@@ -240,19 +309,38 @@
       const submitBtn = groupForm.querySelector('[type="submit"]');
       submitBtn.disabled = true;
       btnText.textContent = 'Creando...';
+      clearErrors();
 
       try {
+        const payload = {
+          name: name,
+          description: `Grupo creado en CopaLink - ${new Date().toLocaleDateString()}`,
+          member_emails: [...memberEmails]
+        };
+        
+        console.log('Enviando datos:', payload);
+        
         const response = await fetch('/api/groups.php?action=create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: name,
-            description: `Grupo creado en CopaLink - ${new Date().toLocaleDateString()}`,
-            member_emails: [...memberEmails]
-          })
+          body: JSON.stringify(payload)
         });
 
-        const data = await response.json();
+        const text = await response.text();
+        console.log('Respuesta del servidor:', text);
+        
+        // Verificar si la respuesta es JSON válido
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.error('Error parseando JSON:', e);
+          console.error('Respuesta recibida:', text);
+          showError('Error del servidor', 'El servidor devolvió una respuesta inválida. Revisa la consola para más detalles.');
+          submitBtn.disabled = false;
+          btnText.textContent = 'Crear grupo';
+          return;
+        }
 
         if (data.success) {
           // Guardar ID del grupo para abrirlo en chats.html
@@ -268,14 +356,14 @@
           // Redirigir
           window.location.href = 'chats.html';
         } else {
-          alert('Error: ' + (data.error || 'No se pudo crear el grupo'));
+          showError(data.error || 'No se pudo crear el grupo');
           submitBtn.disabled = false;
           btnText.textContent = 'Crear grupo';
         }
 
       } catch (error) {
         console.error('Error:', error);
-        alert('Error de conexión. Intenta de nuevo.');
+        showError('Error de conexión al crear el grupo', error.message);
         submitBtn.disabled = false;
         btnText.textContent = 'Crear grupo';
       }
