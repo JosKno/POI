@@ -1,7 +1,30 @@
 /**
- * chats.js - VERSIÓN CON TIEMPO REAL INTEGRADO Y SIN MOCK DE LOCALSTORAGE
- * Sistema de chat con mensajes en tiempo real
+ * chats.js - VERSIÓN COMPLETA CON BD REAL
+ * Carga grupos y conversaciones desde la base de datos
  */
+
+/* =========================
+   VERIFICAR AUTENTICACIÓN
+========================== */
+async function checkAuth() {
+  try {
+    const response = await fetch('/api/auth.php?action=check');
+    const data = await response.json();
+    
+    if (!data.authenticated) {
+      window.location.href = 'login.html';
+      return false;
+    }
+    
+    // Guardar info del usuario
+    localStorage.setItem('current_user', JSON.stringify(data.user));
+    return true;
+  } catch (error) {
+    console.error('Error verificando auth:', error);
+    window.location.href = 'login.html';
+    return false;
+  }
+}
 
 /* =========================
    SISTEMA DE TIEMPO REAL
@@ -10,7 +33,6 @@ const realtimeChat = new RealtimeChat('/api/messages.php');
 let currentChatPolling = null;
 let encryptionEnabled = false;
 
-// Handler para actualizaciones de mensajes no leídos
 realtimeChat.onUnreadUpdate = (data) => {
   const badge = document.querySelector('.notification-badge');
   if (badge) {
@@ -23,11 +45,8 @@ realtimeChat.onUnreadUpdate = (data) => {
    VARIABLES GLOBALES
 ========================== */
 let currentChatId = null;
-let currentChatType = null; // 'private' o 'group'
-// const conversations = JSON.parse(localStorage.getItem('conversations') || '{}'); // Lógica eliminada
-window.localMessageCache = {}; // Usaremos una caché en memoria para los mensajes
-
-// Estructura de datos para tareas y miembros
+let currentChatType = null;
+let conversations = JSON.parse(localStorage.getItem('conversations') || '{}');
 const tasksByChat = {};
 const addedMembers = [];
 
@@ -46,15 +65,16 @@ const convBack = document.getElementById('convBack');
 const btnHome = document.getElementById('btnHome');
 const btnVideo = document.getElementById('btnVideo');
 const btnMore = document.getElementById('btnMore');
+const btnLogout = document.getElementById('btnLogout');
+const btnCreateGroup = document.getElementById('btnCreateGroup');
 
-// Menú contextual del chat
+// Menú y demás elementos...
 const chatMenu = document.getElementById('chatMenu');
 const mEncrypt = document.getElementById('mEncrypt');
 const mTasks = document.getElementById('mTasks');
 const mAddMember = document.getElementById('mAddMember');
 const mEmail = document.getElementById('mEmail');
 
-// Side panel
 const sidePanel = document.getElementById('sidePanel');
 const spClose = document.getElementById('spClose');
 const spTitle = document.getElementById('spTitle');
@@ -62,99 +82,148 @@ const spTasksBody = document.getElementById('spTasksBody');
 const spAddBody = document.getElementById('spAddBody');
 const spEmailBody = document.getElementById('spEmailBody');
 
-// Elementos de tareas
 const taskInput = document.getElementById('taskInput');
 const addTaskBtn = document.getElementById('addTaskBtn');
 const taskList = document.getElementById('taskList');
 
-// Elementos de agregar miembros
 const addInput = document.getElementById('addInput');
 const addMemberBtn = document.getElementById('addMemberBtn');
 const addedList = document.getElementById('addedList');
 
-// Elementos de email
 const emailDesc = document.getElementById('emailDesc');
 const sendEmailBtn = document.getElementById('sendEmailBtn');
 
-// Modal de confirmación
 const confirmModal = document.getElementById('confirmModal');
 const confirmMsgEl = document.getElementById('confirmMsg');
 const confirmOkBtn = document.getElementById('confirmOk');
 const confirmCancelBtn = document.getElementById('confirmCancel');
-const bsConfirmModal = new bootstrap.Modal(confirmModal);
+const bsConfirmModal = confirmModal ? new bootstrap.Modal(confirmModal) : null;
 
 /* =========================
    INICIALIZACIÓN
 ========================== */
-document.addEventListener('DOMContentLoaded', () => {
-  loadChats();
+document.addEventListener('DOMContentLoaded', async () => {
+  // Verificar autenticación primero
+  const isAuth = await checkAuth();
+  if (!isAuth) return;
+  
   setupEventListeners();
+  await loadChatsFromDatabase();
   
   // Solicitar permisos de notificación
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
   }
+  
+  // Si hay un grupo que abrir (viene de crear-grupo)
+  const openGroupId = localStorage.getItem('open_group_id');
+  if (openGroupId) {
+    localStorage.removeItem('open_group_id');
+    setTimeout(() => {
+      const groupItem = document.querySelector(`[data-chat="group-${openGroupId}"]`);
+      if (groupItem) {
+        groupItem.click();
+      }
+    }, 500);
+  }
 });
 
 /* =========================
-   CARGAR LISTA DE CHATS
+   CARGAR CHATS DESDE BD
 ========================== */
-async function loadChats() {
-  const chatItems = []; // Recolectar todos los elementos antes de agregarlos
-
+async function loadChatsFromDatabase() {
   try {
-    // Cargar usuarios para chats privados
-    const usersResponse = await fetch('/api/users.php?action=list');
-    const usersData = await usersResponse.json();
-    
-    if (usersData.success) {
-      usersData.users.forEach(user => {
-        // createChatItem ahora devuelve el elemento
-        chatItems.push(createChatItem(user.id, user.username, 'private', user.avatar_url));
-      });
-    }
+    showLoading();
     
     // Cargar grupos
     const groupsResponse = await fetch('/api/groups.php?action=my_groups');
     const groupsData = await groupsResponse.json();
     
-    if (groupsData.success) {
+    if (groupsData.success && groupsData.groups.length > 0) {
       groupsData.groups.forEach(group => {
-        // createChatItem ahora devuelve el elemento
-        chatItems.push(createChatItem(group.id, group.name, 'group', group.avatar_url));
+        createChatItem(group.id, group.name, 'group', group.avatar_url, group.member_count);
       });
     }
-
-    // Agregar todos los elementos a la lista de chats
-    chatItems.forEach(item => chatlist.appendChild(item));
-
-    // Después de cargar, verificar si se debe abrir un grupo automáticamente
-    checkAutoOpenGroup();
-
+    
+    // Cargar usuarios para chats privados
+    const usersResponse = await fetch('/api/users.php?action=list');
+    const usersData = await usersResponse.json();
+    
+    if (usersData.success && usersData.users.length > 0) {
+      usersData.users.forEach(user => {
+        createChatItem(user.id, user.username, 'private', user.avatar_url, null, user.is_online);
+      });
+    }
+    
+    hideLoading();
+    
+    // Mostrar mensaje si no hay chats
+    if (groupsData.groups.length === 0 && usersData.users.length === 0) {
+      showEmptyState();
+    }
+    
   } catch (error) {
     console.error('Error cargando chats:', error);
+    hideLoading();
+    showToast('Error al cargar chats', 'error');
   }
 }
 
-function createChatItem(id, name, type, avatarUrl = null) {
+function showLoading() {
+  if (chatlist) {
+    chatlist.innerHTML = '<div class="loading-state">Cargando chats...</div>';
+  }
+}
+
+function hideLoading() {
+  const loading = chatlist.querySelector('.loading-state');
+  if (loading) loading.remove();
+}
+
+function showEmptyState() {
+  if (chatlist) {
+    chatlist.innerHTML = `
+      <div class="empty-state">
+        <div style="text-align:center; padding:40px 20px; opacity:0.6;">
+          <div style="font-size:48px; margin-bottom:16px;">💬</div>
+          <h3>No tienes chats aún</h3>
+          <p style="margin:12px 0;">Crea un grupo para comenzar</p>
+          <a href="crear-grupo.html" class="btn btn-success btn-sm">Crear Grupo</a>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function createChatItem(id, name, type, avatarUrl = null, memberCount = null, isOnline = false) {
   const chatItem = document.createElement('a');
   chatItem.href = '#';
   chatItem.className = 'chatitem';
   chatItem.dataset.chat = `${type}-${id}`;
   chatItem.dataset.name = name;
   chatItem.dataset.type = type;
+  chatItem.dataset.id = id;
   
   const avatar = avatarUrl || 'assets/img/default-avatar.png';
+  const onlineIndicator = isOnline && type === 'private' ? 
+    '<span class="online-indicator" style="width:12px;height:12px;background:#22c55e;border-radius:50%;position:absolute;bottom:2px;right:2px;border:2px solid #fff;"></span>' : '';
+  
+  const preview = type === 'group' ? 
+    `👥 Grupo (${memberCount || '0'} miembros)` : 
+    (isOnline ? '🟢 En línea' : 'Chat privado');
   
   chatItem.innerHTML = `
-    <img src="${avatar}" alt="${name}" class="avatar" onerror="this.src='assets/img/default-avatar.png'">
+    <div style="position:relative;">
+      <img src="${avatar}" alt="${name}" class="avatar" onerror="this.src='assets/img/default-avatar.png'" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+      ${onlineIndicator}
+    </div>
     <div class="chatinfo">
       <div class="row1">
-        <h3>${name}</h3>
+        <h3>${ChatUtils.escapeHtml(name)}</h3>
         <span class="time">•</span>
       </div>
       <div class="row2">
-        <span class="preview">${type === 'group' ? '👥 Grupo' : 'Chat privado'}</span>
+        <span class="preview">${preview}</span>
       </div>
     </div>
   `;
@@ -166,27 +235,7 @@ function createChatItem(id, name, type, avatarUrl = null) {
     openConversation(id, name, type);
   });
   
-  return chatItem;
-}
-
-// NUEVA FUNCIÓN: Abrir automáticamente el grupo creado después de la redirección
-function checkAutoOpenGroup() {
-  const openGroupId = localStorage.getItem('open_group_id');
-  if (openGroupId) {
-    localStorage.removeItem('open_group_id'); // Limpiar la bandera
-
-    const newChatItem = document.querySelector(`.chatitem[data-chat="group-${openGroupId}"]`);
-    if (newChatItem) {
-      const id = parseInt(openGroupId);
-      const name = newChatItem.dataset.name;
-      const type = newChatItem.dataset.type;
-
-      // Activar visualmente el item y abrir la conversación
-      document.querySelectorAll('.chatitem.active').forEach(el => el.classList.remove('active'));
-      newChatItem.classList.add('active');
-      openConversation(id, name, type);
-    }
-  }
+  chatlist.appendChild(chatItem);
 }
 
 /* =========================
@@ -196,33 +245,25 @@ function openConversation(id, name, type) {
   currentChatId = id;
   currentChatType = type;
   
-  // Actualizar UI
   convHeader.querySelector('.title').textContent = name;
-  // Ocultar la promo (asumimos id='placeholderPromo' en chats.html), lista y mostrar el chat
-  const placeholderPromo = document.getElementById('placeholderPromo');
-  if (placeholderPromo) placeholderPromo.hidden = true; 
   chatlist.hidden = true;
   conversation.hidden = false;
   
-  // Mostrar/ocultar botón de videollamada (solo privados)
   if (btnVideo) {
     btnVideo.style.display = type === 'private' ? 'block' : 'none';
   }
   
-  // Detener polling del chat anterior
   if (currentChatPolling) {
     realtimeChat.stopChat(currentChatPolling);
   }
   
-  // Limpiar visualmente la conversación anterior
-  convBody.innerHTML = '';
+  const chatKey = `${type}-${id}`;
+  const localMessages = conversations[chatKey] || [];
+  renderMessages(localMessages);
   
-  // Iniciar chat en tiempo real
   currentChatPolling = id;
-  // La función startChat llamará a handleNewMessages con el historial inicial
   realtimeChat.startChat(id, type, handleNewMessages);
   
-  // Scroll y focus
   convBody.scrollTop = convBody.scrollHeight;
   msgInput.focus();
 }
@@ -234,23 +275,18 @@ function handleNewMessages(newMessages) {
   if (!newMessages || newMessages.length === 0) return;
   
   const chatKey = `${currentChatType}-${currentChatId}`;
-  window.localMessageCache[chatKey] = window.localMessageCache[chatKey] || [];
-  
-  const messagesToRender = window.localMessageCache[chatKey]; // Usamos la caché en memoria
+  conversations[chatKey] = conversations[chatKey] || [];
   
   newMessages.forEach(msg => {
-    // Evitar duplicados
-    const exists = messagesToRender.some(m => m.id === msg.id);
+    const exists = conversations[chatKey].some(m => m.id === msg.id);
     if (exists) return;
     
-    // Descifrar si es necesario
     let messageText = msg.message;
     if (msg.encrypted) {
       messageText = ChatUtils.decrypt(messageText);
     }
     
-    // Agregar al array local (formato simplificado para renderMessages)
-    messagesToRender.push({
+    conversations[chatKey].push({
       id: msg.id,
       me: msg.is_mine,
       text: messageText,
@@ -261,7 +297,6 @@ function handleNewMessages(newMessages) {
       file_url: msg.file_url
     });
     
-    // Si no es mi mensaje, notificar
     if (!msg.is_mine) {
       ChatUtils.playNotificationSound();
       
@@ -279,12 +314,9 @@ function handleNewMessages(newMessages) {
     }
   });
   
-  // ELIMINADO: Guardar en localStorage
+  localStorage.setItem('conversations', JSON.stringify(conversations));
+  renderMessages(conversations[chatKey]);
   
-  // Re-renderizar
-  renderMessages(messagesToRender);
-  
-  // Auto-scroll si está cerca del final
   const isNearBottom = convBody.scrollHeight - convBody.scrollTop - convBody.clientHeight < 100;
   if (isNearBottom) {
     convBody.scrollTop = convBody.scrollHeight;
@@ -298,28 +330,31 @@ function renderMessages(arr) {
   const last = (arr || []).slice(-50);
   convBody.innerHTML = '';
   
+  if (last.length === 0) {
+    convBody.innerHTML = '<div style="text-align:center;padding:20px;opacity:0.5;">No hay mensajes aún. ¡Escribe el primero!</div>';
+    return;
+  }
+  
   last.forEach(m => {
     const wrap = document.createElement('div');
     wrap.className = 'msg ' + (m.me ? 'msg-me' : 'msg-peer');
     
     let inner = '';
     
-    // Si es grupo y NO es mío, mostrar nombre + gemas
     if (currentChatType === 'group' && !m.me) {
       const gems = (typeof m.gems === 'number') ? m.gems : 0;
       const name = m.user || 'Miembro';
       inner += `
         <div class="msg-head" style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-          <strong>${name}</strong>
+          <strong>${ChatUtils.escapeHtml(name)}</strong>
           <span class="gems" style="display:inline-flex;align-items:center;gap:6px;font-weight:800;">
-            <img src="assets/img/gema.png" alt="Gema" style="width:18px;height:18px;object-fit:contain;">
+            <img src="assets/img/gema.png" alt="Gema" style="width:18px;height:18px;object-fit:contain;" onerror="this.style.display='none'">
             ${gems}
           </span>
         </div>
       `;
     }
     
-    // Contenido del mensaje
     if (m.type === 'image' && m.file_url) {
       inner += `<img src="${m.file_url}" alt="Imagen" style="max-width:200px;border-radius:8px;margin-bottom:5px;">`;
     }
@@ -343,10 +378,8 @@ async function sendMessage() {
   sendBtn.disabled = true;
   
   try {
-    // Cifrar si está habilitado
     const messageToSend = encryptionEnabled ? ChatUtils.encrypt(text) : text;
     
-    // Enviar a través de la API
     const result = await realtimeChat.sendMessage(
       currentChatId, 
       currentChatType, 
@@ -358,14 +391,10 @@ async function sendMessage() {
     );
     
     if (result.success) {
-      // Agregar localmente (optimistic update)
       const chatKey = `${currentChatType}-${currentChatId}`;
       const time = ChatUtils.formatTime(result.sentAt);
-      window.localMessageCache[chatKey] = window.localMessageCache[chatKey] || []; // Usamos caché en memoria
-      
-      const messagesToRender = window.localMessageCache[chatKey];
-
-      messagesToRender.push({ 
+      conversations[chatKey] = conversations[chatKey] || [];
+      conversations[chatKey].push({ 
         id: result.messageId,
         me: true, 
         text, 
@@ -373,8 +402,8 @@ async function sendMessage() {
         type: 'text'
       });
       
-      // ELIMINADO: localStorage.setItem('conversations', JSON.stringify(conversations));
-      renderMessages(messagesToRender);
+      localStorage.setItem('conversations', JSON.stringify(conversations));
+      renderMessages(conversations[chatKey]);
       
       msgInput.value = '';
     } else {
@@ -394,7 +423,6 @@ async function sendMessage() {
    CERRAR CONVERSACIÓN
 ========================== */
 function closeConversationToPromo() {
-  // Detener polling
   if (currentChatPolling) {
     realtimeChat.stopChat(currentChatPolling);
     currentChatPolling = null;
@@ -402,21 +430,37 @@ function closeConversationToPromo() {
   
   currentChatId = null;
   currentChatType = null;
-  
-  // Mostrar el placeholder/promo (asumimos id='placeholderPromo' en chats.html)
-  const placeholderPromo = document.getElementById('placeholderPromo');
-  if (placeholderPromo) placeholderPromo.hidden = false;
-  
   chatlist.hidden = false;
   conversation.hidden = true;
   closeSidePanel();
 }
 
 /* =========================
+   CERRAR SESIÓN
+========================== */
+async function logout() {
+  try {
+    const response = await fetch('/api/auth.php?action=logout', {
+      method: 'POST'
+    });
+    
+    localStorage.clear();
+    
+    if (realtimeChat) {
+      realtimeChat.destroy();
+    }
+    
+    window.location.href = 'login.html';
+  } catch (error) {
+    console.error('Error al cerrar sesión:', error);
+    window.location.href = 'login.html';
+  }
+}
+
+/* =========================
    EVENT LISTENERS
 ========================== */
 function setupEventListeners() {
-  // Enviar mensaje
   sendBtn?.addEventListener('click', sendMessage);
   msgInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -425,40 +469,36 @@ function setupEventListeners() {
     }
   });
   
-  // Volver
   convBack?.addEventListener('click', closeConversationToPromo);
   
-  // Home
   btnHome?.addEventListener('click', () => {
     window.location.href = 'index.html';
   });
   
-  // Videollamada
-  btnVideo?.addEventListener('click', () => {
-    if (currentChatType !== 'private') return;
-    openConfirm('¿Iniciar videollamada?', () => {
-      console.log('Iniciando videollamada...');
-      // TODO: Implementar videollamada
-    });
+  btnLogout?.addEventListener('click', () => {
+    openConfirm('¿Cerrar sesión?', logout);
   });
   
-  // Menú de opciones
+  btnCreateGroup?.addEventListener('click', () => {
+    window.location.href = 'crear-grupo.html';
+  });
+  
+  btnVideo?.addEventListener('click', () => {
+    if (currentChatType !== 'private') return;
+    showToast('Videollamadas próximamente', 'info');
+  });
+  
   btnMore?.addEventListener('click', (e) => {
     e.stopPropagation();
-    const isOpen = !chatMenu.hasAttribute('hidden');
-    if (isOpen) {
-      chatMenu.setAttribute('hidden', '');
-      btnMore.setAttribute('aria-expanded', 'false');
-    } else {
-      chatMenu.removeAttribute('hidden');
-      btnMore.setAttribute('aria-expanded', 'true');
+    if (chatMenu) {
+      const isOpen = !chatMenu.hasAttribute('hidden');
+      chatMenu.hidden = isOpen;
+      btnMore.setAttribute('aria-expanded', !isOpen);
     }
   });
   
-  // Cerrar menú al hacer click fuera
   document.addEventListener('click', (e) => {
-    if (!chatMenu) return;
-    if (!chatMenu.hasAttribute('hidden')) {
+    if (chatMenu && !chatMenu.hasAttribute('hidden')) {
       const inside = chatMenu.contains(e.target) || btnMore?.contains(e.target);
       if (!inside) {
         chatMenu.setAttribute('hidden', '');
@@ -467,28 +507,19 @@ function setupEventListeners() {
     }
   });
   
-  // Cerrar menú con Escape
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && chatMenu && !chatMenu.hasAttribute('hidden')) {
-      chatMenu.setAttribute('hidden', '');
-      btnMore?.setAttribute('aria-expanded', 'false');
-    }
-  });
-  
-  // Opciones del menú
   mEncrypt?.addEventListener('click', (e) => {
     e.stopPropagation();
-    chatMenu.setAttribute('hidden', '');
+    chatMenu?.setAttribute('hidden', '');
     encryptionEnabled = !encryptionEnabled;
     showToast(
-      encryptionEnabled ? 'Cifrado activado' : 'Cifrado desactivado',
+      encryptionEnabled ? '🔒 Cifrado activado' : '🔓 Cifrado desactivado',
       'success'
     );
   });
   
   mTasks?.addEventListener('click', (e) => {
     e.stopPropagation();
-    chatMenu.setAttribute('hidden', '');
+    chatMenu?.setAttribute('hidden', '');
     if (currentChatType === 'group') {
       openSidePanel('tasks');
     } else {
@@ -496,26 +527,8 @@ function setupEventListeners() {
     }
   });
   
-  mAddMember?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    chatMenu.setAttribute('hidden', '');
-    if (currentChatType === 'group') {
-      openSidePanel('add');
-    } else {
-      showToast('Solo puedes agregar miembros en grupos', 'info');
-    }
-  });
-  
-  mEmail?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    chatMenu.setAttribute('hidden', '');
-    openSidePanel('email');
-  });
-  
-  // Side panel
   spClose?.addEventListener('click', closeSidePanel);
   
-  // Tareas
   addTaskBtn?.addEventListener('click', addTask);
   taskInput?.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addTask();
@@ -523,70 +536,48 @@ function setupEventListeners() {
   
   taskList?.addEventListener('change', (e) => {
     if (e.target.type === 'checkbox') {
-      const taskId = e.target.dataset.id;
-      toggleTask(taskId);
+      toggleTask(e.target.dataset.id);
     }
   });
-  
-  // Agregar miembros
-  addMemberBtn?.addEventListener('click', addMember);
-  addInput?.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') addMember();
-  });
-  
-  // Email
-  sendEmailBtn?.addEventListener('click', sendEmail);
 }
 
 /* =========================
-   SIDE PANEL
+   SIDE PANEL Y TAREAS
 ========================== */
 function openSidePanel(mode) {
   document.querySelector('.panel')?.classList.add('narrow');
-  sidePanel.hidden = false;
+  if (sidePanel) sidePanel.hidden = false;
   
-  spTasksBody.hidden = true;
-  spAddBody.hidden = true;
-  spEmailBody.hidden = true;
+  if (spTasksBody) spTasksBody.hidden = true;
+  if (spAddBody) spAddBody.hidden = true;
+  if (spEmailBody) spEmailBody.hidden = true;
   
-  if (mode === 'tasks') {
-    spTitle.textContent = 'Administrador de tareas';
+  if (mode === 'tasks' && spTasksBody) {
+    if (spTitle) spTitle.textContent = 'Administrador de tareas';
     spTasksBody.hidden = false;
     renderTasks();
     taskInput?.focus();
-  } else if (mode === 'add') {
-    spTitle.textContent = 'Agregar integrante';
-    spAddBody.hidden = false;
-    addInput?.focus();
-  } else if (mode === 'email') {
-    spTitle.textContent = 'Enviar Correo';
-    spEmailBody.hidden = false;
-    emailDesc?.focus();
   }
 }
 
 function closeSidePanel() {
-  sidePanel.hidden = true;
+  if (sidePanel) sidePanel.hidden = true;
   document.querySelector('.panel')?.classList.remove('narrow');
 }
 
-/* =========================
-   TAREAS
-========================== */
 function addTask() {
-  const text = taskInput.value.trim();
+  const text = taskInput?.value.trim();
   if (!text) return;
   
   const chatKey = `${currentChatType}-${currentChatId}`;
   tasksByChat[chatKey] = tasksByChat[chatKey] || [];
   
-  const task = {
+  tasksByChat[chatKey].push({
     id: Date.now(),
     text,
     done: false
-  };
+  });
   
-  tasksByChat[chatKey].push(task);
   taskInput.value = '';
   renderTasks();
 }
@@ -603,6 +594,9 @@ function toggleTask(taskId) {
 function renderTasks() {
   const chatKey = `${currentChatType}-${currentChatId}`;
   const items = tasksByChat[chatKey] || [];
+  
+  if (!taskList) return;
+  
   taskList.innerHTML = '';
   
   items.forEach(t => {
@@ -610,73 +604,23 @@ function renderTasks() {
     row.className = 'sp-task';
     row.innerHTML = `
       <input type="checkbox" ${t.done ? 'checked' : ''} data-id="${t.id}">
-      <div style="${t.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${t.text}</div>
+      <div style="${t.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${ChatUtils.escapeHtml(t.text)}</div>
     `;
     taskList.appendChild(row);
   });
 }
 
 /* =========================
-   MIEMBROS
-========================== */
-function addMember() {
-  const name = addInput.value.trim();
-  if (!name) return;
-  
-  addedMembers.push(name);
-  addInput.value = '';
-  renderAdded();
-}
-
-function renderAdded() {
-  addedList.innerHTML = '';
-  addedMembers.forEach((m, idx) => {
-    const div = document.createElement('div');
-    div.className = 'sp-task';
-    div.innerHTML = `<div style="grid-column:1 / span 2;">${idx + 1}. ${m}</div>`;
-    addedList.appendChild(div);
-  });
-}
-
-/* =========================
-   EMAIL
-========================== */
-async function sendEmail() {
-  const desc = emailDesc.value.trim();
-  if (!desc) {
-    showToast('Escribe un mensaje', 'error');
-    return;
-  }
-  
-  try {
-    const response = await fetch('/api/email.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'send',
-        message: desc,
-        chat_id: currentChatId
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.success) {
-      showToast('Correo enviado correctamente', 'success');
-      emailDesc.value = '';
-      closeSidePanel();
-    } else {
-      throw new Error(data.error);
-    }
-  } catch (error) {
-    showToast('Error al enviar correo', 'error');
-  }
-}
-
-/* =========================
    UTILIDADES
 ========================== */
 function openConfirm(message, onConfirm) {
+  if (!bsConfirmModal) {
+    if (confirm(message)) {
+      onConfirm && onConfirm();
+    }
+    return;
+  }
+  
   confirmMsgEl.textContent = message;
   const handler = () => {
     try {
@@ -691,7 +635,6 @@ function openConfirm(message, onConfirm) {
 }
 
 function showToast(message, type = 'info') {
-  // Implementación simple de toast
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.textContent = message;

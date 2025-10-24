@@ -1,7 +1,7 @@
 <?php
 /**
- * groups.php
- * API para gestión de grupos
+ * groups.php - COMPLETO
+ * API para gestión de grupos con búsqueda por email
  */
 
 header('Access-Control-Allow-Origin: *');
@@ -36,12 +36,12 @@ try {
             createGroup($conn, $userId);
             break;
             
-        case 'details':
-            getGroupDetails($conn, $userId);
+        case 'search_users':
+            searchUsersByEmail($conn, $userId);
             break;
             
-        case 'add_member':
-            addMember($conn, $userId);
+        case 'details':
+            getGroupDetails($conn, $userId);
             break;
             
         default:
@@ -55,6 +55,9 @@ try {
     ]);
 }
 
+/**
+ * Obtener grupos del usuario
+ */
 function getMyGroups($conn, $userId) {
     $stmt = $conn->prepare("
         SELECT 
@@ -63,11 +66,12 @@ function getMyGroups($conn, $userId) {
             g.description, 
             g.avatar_url,
             g.created_at,
+            g.updated_at,
             COUNT(gm.user_id) as member_count
         FROM grupo g
         INNER JOIN group_members gm ON g.id = gm.group_id
         WHERE gm.user_id = ?
-        GROUP BY g.id, g.name, g.description, g.avatar_url, g.created_at
+        GROUP BY g.id, g.name, g.description, g.avatar_url, g.created_at, g.updated_at
         ORDER BY g.updated_at DESC
     ");
     $stmt->bind_param('i', $userId);
@@ -82,7 +86,8 @@ function getMyGroups($conn, $userId) {
             'description' => $row['description'],
             'avatar_url' => $row['avatar_url'],
             'member_count' => intval($row['member_count']),
-            'created_at' => $row['created_at']
+            'created_at' => $row['created_at'],
+            'updated_at' => $row['updated_at']
         ];
     }
     
@@ -92,12 +97,15 @@ function getMyGroups($conn, $userId) {
     ]);
 }
 
+/**
+ * Crear grupo con miembros por email
+ */
 function createGroup($conn, $userId) {
     $data = json_decode(file_get_contents('php://input'), true);
     
     $name = trim($data['name'] ?? '');
     $description = trim($data['description'] ?? '');
-    $members = $data['members'] ?? [];
+    $memberEmails = $data['member_emails'] ?? []; // Ahora recibimos emails
     
     if (empty($name)) {
         throw new Exception('El nombre del grupo es requerido');
@@ -111,7 +119,7 @@ function createGroup($conn, $userId) {
     $stmt->bind_param('ssi', $name, $description, $userId);
     
     if (!$stmt->execute()) {
-        throw new Exception('Error al crear grupo');
+        throw new Exception('Error al crear grupo: ' . $conn->error);
     }
     
     $groupId = $conn->insert_id;
@@ -124,17 +132,32 @@ function createGroup($conn, $userId) {
     $stmt->bind_param('ii', $groupId, $userId);
     $stmt->execute();
     
-    // Agregar miembros
-    if (!empty($members)) {
+    // Agregar miembros por email
+    $addedCount = 0;
+    if (!empty($memberEmails)) {
         $stmt = $conn->prepare("
-            INSERT INTO group_members (group_id, user_id, role) 
+            SELECT id FROM users WHERE email = ? AND id != ?
+        ");
+        
+        $insertStmt = $conn->prepare("
+            INSERT IGNORE INTO group_members (group_id, user_id, role) 
             VALUES (?, ?, 'member')
         ");
         
-        foreach ($members as $memberId) {
-            if ($memberId != $userId) {
-                $stmt->bind_param('ii', $groupId, $memberId);
-                $stmt->execute();
+        foreach ($memberEmails as $email) {
+            $email = trim($email);
+            if (empty($email)) continue;
+            
+            $stmt->bind_param('si', $email, $userId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($row = $result->fetch_assoc()) {
+                $memberId = $row['id'];
+                $insertStmt->bind_param('ii', $groupId, $memberId);
+                if ($insertStmt->execute() && $insertStmt->affected_rows > 0) {
+                    $addedCount++;
+                }
             }
         }
     }
@@ -142,10 +165,55 @@ function createGroup($conn, $userId) {
     echo json_encode([
         'success' => true,
         'group_id' => $groupId,
+        'members_added' => $addedCount,
         'message' => 'Grupo creado exitosamente'
     ]);
 }
 
+/**
+ * Buscar usuarios por email
+ */
+function searchUsersByEmail($conn, $userId) {
+    $email = trim($_GET['email'] ?? '');
+    
+    if (empty($email)) {
+        echo json_encode(['success' => true, 'users' => []]);
+        return;
+    }
+    
+    $searchTerm = "%{$email}%";
+    
+    $stmt = $conn->prepare("
+        SELECT id, username, email, avatar_url, gems, is_online
+        FROM users 
+        WHERE id != ? AND email LIKE ?
+        LIMIT 10
+    ");
+    $stmt->bind_param('is', $userId, $searchTerm);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    $users = [];
+    while ($row = $result->fetch_assoc()) {
+        $users[] = [
+            'id' => intval($row['id']),
+            'username' => $row['username'],
+            'email' => $row['email'],
+            'avatar_url' => $row['avatar_url'],
+            'gems' => intval($row['gems']),
+            'is_online' => (bool)$row['is_online']
+        ];
+    }
+    
+    echo json_encode([
+        'success' => true,
+        'users' => $users
+    ]);
+}
+
+/**
+ * Obtener detalles del grupo
+ */
 function getGroupDetails($conn, $userId) {
     $groupId = $_GET['id'] ?? null;
     
@@ -185,13 +253,19 @@ function getGroupDetails($conn, $userId) {
     $result = $stmt->get_result();
     $group = $result->fetch_assoc();
     
+    if (!$group) {
+        throw new Exception('Grupo no encontrado');
+    }
+    
     // Obtener miembros
     $stmt = $conn->prepare("
         SELECT 
             u.id,
             u.username,
+            u.email,
             u.avatar_url,
             u.is_online,
+            u.gems,
             gm.role,
             gm.joined_at
         FROM group_members gm
@@ -208,8 +282,10 @@ function getGroupDetails($conn, $userId) {
         $members[] = [
             'id' => intval($row['id']),
             'username' => $row['username'],
+            'email' => $row['email'],
             'avatar_url' => $row['avatar_url'],
             'is_online' => (bool)$row['is_online'],
+            'gems' => intval($row['gems']),
             'role' => $row['role'],
             'joined_at' => $row['joined_at']
         ];
@@ -227,50 +303,6 @@ function getGroupDetails($conn, $userId) {
             'created_at' => $group['created_at']
         ],
         'members' => $members
-    ]);
-}
-
-function addMember($conn, $userId) {
-    $data = json_decode(file_get_contents('php://input'), true);
-    
-    $groupId = $data['group_id'] ?? null;
-    $memberId = $data['user_id'] ?? null;
-    
-    if (!$groupId || !$memberId) {
-        throw new Exception('Datos incompletos');
-    }
-    
-    // Verificar que el usuario es admin del grupo
-    $stmt = $conn->prepare("
-        SELECT role FROM group_members 
-        WHERE group_id = ? AND user_id = ?
-    ");
-    $stmt->bind_param('ii', $groupId, $userId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    
-    if (!$row || $row['role'] !== 'admin') {
-        throw new Exception('No tienes permisos para agregar miembros');
-    }
-    
-    // Agregar miembro
-    $stmt = $conn->prepare("
-        INSERT INTO group_members (group_id, user_id, role) 
-        VALUES (?, ?, 'member')
-    ");
-    $stmt->bind_param('ii', $groupId, $memberId);
-    
-    if (!$stmt->execute()) {
-        if ($conn->errno === 1062) {
-            throw new Exception('El usuario ya es miembro del grupo');
-        }
-        throw new Exception('Error al agregar miembro');
-    }
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'Miembro agregado exitosamente'
     ]);
 }
 
