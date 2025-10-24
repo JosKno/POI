@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CopaLink — Crear grupo</title>
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Estilos compartidos -->
+  <link rel="stylesheet" href="css/landing.css" />
+  <link rel="stylesheet" href="css/chats.css" />
+
+  <style>
+    body { min-height: 100vh; }
+    .cg-wrap{ max-width: 720px; margin: 48px auto; }
+    .cg-card{
+      border-radius: 16px; background: rgba(12,16,26,.92); color:#fff;
+      border:1px solid rgba(255,255,255,.12); backdrop-filter: blur(12px) saturate(120%);
+    }
+    .chip{
+      display:inline-flex; align-items:center; gap:8px; margin:4px;
+      padding:6px 10px; border-radius:999px;
+      background: rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12);
+      font-weight:600;
+    }
+    .chip button{ border:0; background:transparent; color:#fff; line-height:1; font-size:18px; }
+    .cg-muted{ color: rgba(255,255,255,.7); }
+  </style>
+</head>
+<body>
+  <!-- Fondo -->
+  <div class="hero__bg" aria-hidden="true"></div>
+  <div class="hero__overlay" aria-hidden="true"></div>
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <a class="brand btn-reset" href="chats.html" title="Volver a chats">CopaLink</a>
+  </header>
+
+    <main class="cg-wrap">
+    <div class="cg-card p-4 shadow-lg">
+      <h2 class="fw-bold mb-2">Crear grupo</h2>
+      <p class="mb-4 cg-muted">Ponle un nombre al grupo y agrega miembros por correo o nombre.</p>
+
+      <form id="groupForm" class="d-grid gap-3" novalidate>
+        <div>
+          <label class="form-label fw-semibold" for="groupName">Nombre del grupo</label>
+          <input id="groupName" class="form-control" placeholder=" Ingresa nombre del grupo" required>
+        </div>
+
+        <div>
+          <label class="form-label fw-semibold" for="memberInput">Agregar miembro</label>
+          <div class="input-group">
+            <input id="memberInput" class="form-control" placeholder="Correo o nombre">
+            <button id="addMemberBtn" class="btn btn-success" type="button">Agregar</button>
+          </div>
+          <div id="membersChips" class="mt-2" aria-live="polite"></div>
+        </div>
+
+        <div class="d-flex gap-2 justify-content-end mt-2">
+          <a href="chats.html" class="btn btn-outline-light">Cancelar</a>
+          <button class="btn btn-success fw-bold" type="submit">Crear grupo</button>
+        </div>
+      </form>
+    </div>
+  </main>
+
+    <script>
+    // Estado local de miembros
+    const members = new Set();
+
+    // Selectores
+    const groupForm    = document.getElementById('groupForm');
+    const groupName    = document.getElementById('groupName');
+    const memberInput  = document.getElementById('memberInput');
+    const addMemberBtn = document.getElementById('addMemberBtn');
+    const membersChips = document.getElementById('membersChips');
+
+    // Render chips
+    function renderChips(){
+      membersChips.innerHTML = '';
+      [...members].forEach(m => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.innerHTML = `${m} <button type="button" aria-label="Quitar">&times;</button>`;
+        chip.querySelector('button').addEventListener('click', () => {
+          members.delete(m);
+          renderChips();
+        });
+        membersChips.appendChild(chip);
+      });
+    }
+
+    // Agregar miembro (evita duplicados/espacios raros)
+    function addMember(){
+      const raw = (memberInput.value || '').trim();
+      if (!raw) return;
+      const val = raw.replace(/\s+/g,' ');
+      if (members.has(val)) { memberInput.value=''; memberInput.focus(); return; }
+      members.add(val);
+      memberInput.value = '';
+      renderChips();
+      memberInput.focus();
+    }
+
+    addMemberBtn.addEventListener('click', addMember);
+    memberInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter'){ e.preventDefault(); addMember(); }
+    });
+
+    // Crear grupo
+    groupForm.addEventListener('submit', e => {
+      e.preventDefault();
+      const name = (groupName.value || '').trim();
+      if (!name){ groupName.focus(); return; }
+
+      // Objeto grupo
+      const newGroup = {
+        id: 'g_' + Date.now(),
+        name,
+        members: [...members],
+      };
+
+      // Guardar en localStorage para que chats.js lo pinte
+      const groups = JSON.parse(localStorage.getItem('created_groups') || '[]');
+      groups.push(newGroup);
+      localStorage.setItem('created_groups', JSON.stringify(groups));
+
+      // Conversación inicial (mensaje del sistema)
+      const convs = JSON.parse(localStorage.getItem('created_conversations') || '{}');
+      const now   = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+      convs[newGroup.id] = [
+        { me:false, user:"Sistema", gems:0, text:"Grupo creado ✨", time: now }
+      ];
+      localStorage.setItem('created_conversations', JSON.stringify(convs));
+
+      // Indicar a chats cuál abrir al regresar
+      localStorage.setItem('open_group_id', newGroup.id);
+
+      // Volver a la lista de chats
+      window.location.href = 'chats.html';
+    });
+  </script>
+</body>
+</html>

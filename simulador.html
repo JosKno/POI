@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CopaLink — Simulador</title>
+
+  <!-- Bootstrap (opcional) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Reutilizamos fondo/vars de tu app -->
+  <link rel="stylesheet" href="css/landing.css" />
+  <link rel="stylesheet" href="css/chats.css" />
+  <!-- Estilos propios del simulador -->
+  <link rel="stylesheet" href="css/simulador.css" />
+</head>
+<body>
+  <!-- Fondo -->
+  <div class="hero__bg" aria-hidden="true"></div>
+  <div class="hero__overlay" aria-hidden="true"></div>
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <a class="brand btn-reset" href="chats.html" title="Volver a chats">CopaLink</a>
+    <div class="topbar-actions">
+      <a href="simulador.html" class="btn-simulador">Simulador</a>
+    </div>
+  </header>
+
+  <main class="sim-wrap">
+    <!-- Hero -->
+    <section class="sim-hero card glass">
+      <h1 class="sim-title">Simulador del torneo</h1>
+      <p class="sim-sub">
+        Genera la fase de grupos. Luego apuesta por un equipo y simulamos clasificación (top 2 por grupo).
+      </p>
+      <div class="d-flex gap-2 flex-wrap">
+        <button id="btnGenerate" class="btn btn-success fw-bold px-4">Generar torneo</button>
+        <button id="btnClear" class="btn btn-outline-light fw-bold px-4">Limpiar</button>
+        <button id="btnToggleBet" class="btn btn-primary fw-bold px-4">Apuestas</button>
+      </div>
+    </section>
+
+    <!-- Grupos A–L -->
+    <section id="groupsGrid" class="groups-grid"><!-- relleno por JS --></section>
+
+    <!-- Clasificados -->
+    <section id="resultsCard" class="results card glass" hidden>
+      <header class="results-head">
+        <h3 class="results-title">Clasificados (Top 2 por grupo)</h3>
+        <small id="resultsHint" class="muted"></small>
+      </header>
+      <div id="resultsBody" class="results-body"><!-- relleno por JS --></div>
+    </section>
+
+    <!-- ===== BRACKET / LLAVES ===== -->
+    <section id="bracketCard" class="bracket card glass" hidden>
+      <header class="bracket-head">
+        <h3 class="bracket-title">Fase eliminatoria</h3>
+        <div class="d-flex gap-2 flex-wrap">
+          <button id="btnBuildBracket" class="btn btn-primary fw-bold">Generar llaves (32)</button>
+          <button id="btnSimBracket" class="btn btn-success fw-bold" disabled>Simular llaves</button>
+        </div>
+      </header>
+
+      <div id="bracketGrid" class="bracket-grid"><!-- se llena con JS --></div>
+
+      <footer class="bracket-footer">
+        <div id="championBox" class="champion" hidden>
+          🏆 <span id="championName"></span> — Campeón
+        </div>
+      </footer>
+    </section>
+  </main>
+
+  <!-- Panel de apuestas (drawer derecho) -->
+  <aside id="betPanel" class="bet-panel card glass" hidden>
+    <header class="bet-head">
+      <h3 class="bet-title">Apuestas</h3>
+      <button id="betClose" class="btn-close btn-close-white" aria-label="Cerrar"></button>
+    </header>
+
+    <div class="bet-body">
+      <div class="mb-3">
+        <label class="form-label fw-semibold" for="betGroup">Grupo</label>
+        <select id="betGroup" class="form-select"><!-- opciones por JS --></select>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-semibold" for="betTeam">Equipo</label>
+        <select id="betTeam" class="form-select" disabled>
+          <option value="">— Selecciona grupo primero —</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label fw-semibold" for="betGems">Gemas</label>
+        <input id="betGems" class="form-control" type="number" min="1" step="1" placeholder="Ej. 50" />
+      </div>
+
+      <div class="d-grid gap-2">
+        <button id="betSubmit" class="btn btn-success fw-bold">Apostar</button>
+      </div>
+
+      <div id="betNote" class="bet-note muted mt-2">
+        * La clasificación se determina tomando los <b>primeros dos</b> equipos de cada grupo.
+      </div>
+    </div>
+  </aside>
+
+  <!-- Overlay de simulación -->
+  <div id="simOverlay" class="sim-overlay" hidden>
+    <div class="sim-modal card glass">
+      <div class="spinner-border text-success me-2" role="status" aria-hidden="true"></div>
+      <div>
+        <div class="fw-bold">Simulando torneo…</div>
+        <small class="muted">Esto tarda solo un momento</small>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="js/simulador.js"></script>
+</body>
+</html>
