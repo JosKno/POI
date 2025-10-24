@@ -1,6 +1,6 @@
 <?php
 /**
- * groups.php - CORREGIDO COMPLETAMENTE
+ * groups.php - CORREGIDO CON CONTEO DE MIEMBROS CORRECTO
  * API para gestión de grupos con búsqueda por email
  */
 
@@ -56,6 +56,7 @@ try {
             throw new Exception('Acción no válida: ' . $action);
     }
 } catch (Exception $e) {
+    error_log('Error en groups.php: ' . $e->getMessage());
     http_response_code(400);
     echo json_encode([
         'success' => false,
@@ -67,8 +68,10 @@ closeDBConnection($conn);
 
 /**
  * Obtener grupos del usuario
+ * ✅ CORREGIDO: Cuenta correctamente TODOS los miembros del grupo
  */
 function getMyGroups($conn, $userId) {
+    // ✅ SOLUCIÓN: Usar subconsulta para contar TODOS los miembros
     $stmt = $conn->prepare("
         SELECT 
             g.id, 
@@ -77,11 +80,11 @@ function getMyGroups($conn, $userId) {
             g.avatar_url,
             g.created_at,
             g.updated_at,
-            COUNT(gm.user_id) as member_count
+            (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count
         FROM grupo g
         INNER JOIN group_members gm ON g.id = gm.group_id
         WHERE gm.user_id = ?
-        GROUP BY g.id, g.name, g.description, g.avatar_url, g.created_at, g.updated_at
+        GROUP BY g.id
         ORDER BY g.updated_at DESC
     ");
     
@@ -90,7 +93,11 @@ function getMyGroups($conn, $userId) {
     }
     
     $stmt->bind_param('i', $userId);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        throw new Exception('Error ejecutando consulta: ' . $stmt->error);
+    }
+    
     $result = $stmt->get_result();
     
     $groups = [];
@@ -100,18 +107,18 @@ function getMyGroups($conn, $userId) {
             'name' => $row['name'],
             'description' => $row['description'],
             'avatar_url' => $row['avatar_url'],
-            'member_count' => intval($row['member_count']),
+            'member_count' => intval($row['member_count']),  // ✅ Ahora cuenta correctamente
             'created_at' => $row['created_at'],
             'updated_at' => $row['updated_at']
         ];
     }
     
+    $stmt->close();
+    
     echo json_encode([
         'success' => true,
         'groups' => $groups
     ]);
-    
-    $stmt->close();
 }
 
 /**
@@ -257,7 +264,11 @@ function searchUsersByEmail($conn, $userId) {
     }
     
     $stmt->bind_param('is', $userId, $searchTerm);
-    $stmt->execute();
+    
+    if (!$stmt->execute()) {
+        throw new Exception('Error ejecutando consulta: ' . $stmt->error);
+    }
+    
     $result = $stmt->get_result();
     
     $users = [];
@@ -272,12 +283,12 @@ function searchUsersByEmail($conn, $userId) {
         ];
     }
     
+    $stmt->close();
+    
     echo json_encode([
         'success' => true,
         'users' => $users
     ]);
-    
-    $stmt->close();
 }
 
 /**

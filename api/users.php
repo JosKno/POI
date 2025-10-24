@@ -1,13 +1,20 @@
 <?php
 /**
- * users.php
- * API para gestión de usuarios
+ * users.php - CORREGIDO
+ * API para gestión de usuarios SIN ERROR 500
  */
 
+// Evitar cualquier salida antes de headers
+ob_start();
+
+// Configurar headers ANTES de cualquier salida
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Content-Type: application/json; charset=UTF-8');
+
+// Limpiar buffer
+ob_end_clean();
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -16,12 +23,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 session_start();
 
-require_once 'config.php';
+require_once __DIR__ . '/config.php';
 
 if (!isset($_SESSION['user_id'])) {
     echo json_encode(['success' => false, 'error' => 'No autenticado']);
     exit();
 }
+
+// Obtener conexión a la base de datos
+$conn = getDBConnection();
 
 $action = $_GET['action'] ?? '';
 $userId = $_SESSION['user_id'];
@@ -41,7 +51,7 @@ try {
             break;
             
         default:
-            throw new Exception('Acción no válida');
+            throw new Exception('Acción no válida: ' . $action);
     }
 } catch (Exception $e) {
     http_response_code(400);
@@ -51,6 +61,8 @@ try {
     ]);
 }
 
+closeDBConnection($conn);
+
 function listUsers($conn, $userId) {
     $stmt = $conn->prepare("
         SELECT id, username, email, avatar_url, is_online, gems 
@@ -58,6 +70,11 @@ function listUsers($conn, $userId) {
         WHERE id != ?
         ORDER BY username ASC
     ");
+    
+    if (!$stmt) {
+        throw new Exception('Error en la consulta: ' . $conn->error);
+    }
+    
     $stmt->bind_param('i', $userId);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -68,11 +85,13 @@ function listUsers($conn, $userId) {
             'id' => intval($row['id']),
             'username' => $row['username'],
             'email' => $row['email'],
-            'avatar_url' => $row['avatar_url'],
+            'avatar_url' => $row['avatar_url'] ?: null,
             'is_online' => (bool)$row['is_online'],
             'gems' => intval($row['gems'])
         ];
     }
+    
+    $stmt->close();
     
     echo json_encode([
         'success' => true,
@@ -81,7 +100,7 @@ function listUsers($conn, $userId) {
 }
 
 function searchUsers($conn, $userId) {
-    $query = $_GET['q'] ?? '';
+    $query = trim($_GET['q'] ?? '');
     
     if (empty($query)) {
         echo json_encode(['success' => true, 'users' => []]);
@@ -95,9 +114,13 @@ function searchUsers($conn, $userId) {
         FROM users 
         WHERE id != ? 
         AND (username LIKE ? OR email LIKE ?)
-        ORDER BY username ASC
         LIMIT 20
     ");
+    
+    if (!$stmt) {
+        throw new Exception('Error en la consulta: ' . $conn->error);
+    }
+    
     $stmt->bind_param('iss', $userId, $searchTerm, $searchTerm);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -108,11 +131,13 @@ function searchUsers($conn, $userId) {
             'id' => intval($row['id']),
             'username' => $row['username'],
             'email' => $row['email'],
-            'avatar_url' => $row['avatar_url'],
+            'avatar_url' => $row['avatar_url'] ?: null,
             'is_online' => (bool)$row['is_online'],
             'gems' => intval($row['gems'])
         ];
     }
+    
+    $stmt->close();
     
     echo json_encode([
         'success' => true,
@@ -121,35 +146,41 @@ function searchUsers($conn, $userId) {
 }
 
 function getUserProfile($conn, $userId) {
-    $profileId = $_GET['id'] ?? $userId;
+    $requestedUserId = $_GET['user_id'] ?? $userId;
     
     $stmt = $conn->prepare("
-        SELECT id, username, email, avatar_url, is_online, last_seen, gems, created_at 
+        SELECT id, username, email, avatar_url, is_online, gems, created_at
         FROM users 
         WHERE id = ?
     ");
-    $stmt->bind_param('i', $profileId);
+    
+    if (!$stmt) {
+        throw new Exception('Error en la consulta: ' . $conn->error);
+    }
+    
+    $stmt->bind_param('i', $requestedUserId);
     $stmt->execute();
     $result = $stmt->get_result();
     
-    if ($row = $result->fetch_assoc()) {
-        echo json_encode([
-            'success' => true,
-            'user' => [
-                'id' => intval($row['id']),
-                'username' => $row['username'],
-                'email' => $row['email'],
-                'avatar_url' => $row['avatar_url'],
-                'is_online' => (bool)$row['is_online'],
-                'last_seen' => $row['last_seen'],
-                'gems' => intval($row['gems']),
-                'created_at' => $row['created_at']
-            ]
-        ]);
-    } else {
+    if ($result->num_rows === 0) {
+        $stmt->close();
         throw new Exception('Usuario no encontrado');
     }
+    
+    $user = $result->fetch_assoc();
+    $stmt->close();
+    
+    echo json_encode([
+        'success' => true,
+        'user' => [
+            'id' => intval($user['id']),
+            'username' => $user['username'],
+            'email' => $user['email'],
+            'avatar_url' => $user['avatar_url'] ?: null,
+            'is_online' => (bool)$user['is_online'],
+            'gems' => intval($user['gems']),
+            'created_at' => $user['created_at']
+        ]
+    ]);
 }
-
-$conn->close();
 ?>
