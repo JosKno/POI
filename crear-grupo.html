@@ -68,7 +68,7 @@
   </main>
 
     <script>
-    // Estado local de miembros
+    // Estado local de miembros (Mantenido por si el usuario lo necesita, pero ignorado en el API call por ahora)
     const members = new Set();
 
     // Selectores
@@ -93,7 +93,7 @@
       });
     }
 
-    // Agregar miembro (evita duplicados/espacios raros)
+    // Agregar miembro
     function addMember(){
       const raw = (memberInput.value || '').trim();
       if (!raw) return;
@@ -110,37 +110,49 @@
       if (e.key === 'Enter'){ e.preventDefault(); addMember(); }
     });
 
-    // Crear grupo
-    groupForm.addEventListener('submit', e => {
+    // Función de crear grupo REAL
+    groupForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = (groupName.value || '').trim();
       if (!name){ groupName.focus(); return; }
 
-      // Objeto grupo
-      const newGroup = {
-        id: 'g_' + Date.now(),
-        name,
-        members: [...members],
-      };
+      // Deshabilitar formulario
+      const submitBtn = groupForm.querySelector('[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creando...';
 
-      // Guardar en localStorage para que chats.js lo pinte
-      const groups = JSON.parse(localStorage.getItem('created_groups') || '[]');
-      groups.push(newGroup);
-      localStorage.setItem('created_groups', JSON.stringify(groups));
+      // ** Llamada a la API real **
+      try {
+        const response = await fetch('api/groups.php?action=create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            description: 'Grupo creado en CopaLink',
+            members: [] // Enviamos vacío, la API solo acepta user_ids
+          })
+        });
 
-      // Conversación inicial (mensaje del sistema)
-      const convs = JSON.parse(localStorage.getItem('created_conversations') || '{}');
-      const now   = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
-      convs[newGroup.id] = [
-        { me:false, user:"Sistema", gems:0, text:"Grupo creado ✨", time: now }
-      ];
-      localStorage.setItem('created_conversations', JSON.stringify(convs));
+        const data = await response.json();
 
-      // Indicar a chats cuál abrir al regresar
-      localStorage.setItem('open_group_id', newGroup.id);
+        if (data.success) {
+          // Indicar a chats cuál abrir al regresar
+          localStorage.setItem('open_group_id', data.group_id);
+          
+          // Redirigir a la lista de chats (chats.js lo abrirá)
+          window.location.href = 'chats.html';
+        } else {
+          alert('Error al crear el grupo: ' + (data.error || 'Desconocido'));
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Crear grupo';
+        }
 
-      // Volver a la lista de chats
-      window.location.href = 'chats.html';
+      } catch (error) {
+        console.error('Error de red al crear grupo:', error);
+        alert('Error de conexión. Intenta de nuevo.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Crear grupo';
+      }
     });
   </script>
 </body>

@@ -1,5 +1,5 @@
 /**
- * chats.js - VERSIÓN CON TIEMPO REAL INTEGRADO
+ * chats.js - VERSIÓN CON TIEMPO REAL INTEGRADO Y SIN MOCK DE LOCALSTORAGE
  * Sistema de chat con mensajes en tiempo real
  */
 
@@ -24,7 +24,8 @@ realtimeChat.onUnreadUpdate = (data) => {
 ========================== */
 let currentChatId = null;
 let currentChatType = null; // 'private' o 'group'
-let conversations = JSON.parse(localStorage.getItem('conversations') || '{}');
+// const conversations = JSON.parse(localStorage.getItem('conversations') || '{}'); // Lógica eliminada
+window.localMessageCache = {}; // Usaremos una caché en memoria para los mensajes
 
 // Estructura de datos para tareas y miembros
 const tasksByChat = {};
@@ -99,6 +100,8 @@ document.addEventListener('DOMContentLoaded', () => {
    CARGAR LISTA DE CHATS
 ========================== */
 async function loadChats() {
+  const chatItems = []; // Recolectar todos los elementos antes de agregarlos
+
   try {
     // Cargar usuarios para chats privados
     const usersResponse = await fetch('/api/users.php?action=list');
@@ -106,7 +109,8 @@ async function loadChats() {
     
     if (usersData.success) {
       usersData.users.forEach(user => {
-        createChatItem(user.id, user.username, 'private', user.avatar_url);
+        // createChatItem ahora devuelve el elemento
+        chatItems.push(createChatItem(user.id, user.username, 'private', user.avatar_url));
       });
     }
     
@@ -116,9 +120,17 @@ async function loadChats() {
     
     if (groupsData.success) {
       groupsData.groups.forEach(group => {
-        createChatItem(group.id, group.name, 'group', group.avatar_url);
+        // createChatItem ahora devuelve el elemento
+        chatItems.push(createChatItem(group.id, group.name, 'group', group.avatar_url));
       });
     }
+
+    // Agregar todos los elementos a la lista de chats
+    chatItems.forEach(item => chatlist.appendChild(item));
+
+    // Después de cargar, verificar si se debe abrir un grupo automáticamente
+    checkAutoOpenGroup();
+
   } catch (error) {
     console.error('Error cargando chats:', error);
   }
@@ -154,7 +166,27 @@ function createChatItem(id, name, type, avatarUrl = null) {
     openConversation(id, name, type);
   });
   
-  chatlist.appendChild(chatItem);
+  return chatItem;
+}
+
+// NUEVA FUNCIÓN: Abrir automáticamente el grupo creado después de la redirección
+function checkAutoOpenGroup() {
+  const openGroupId = localStorage.getItem('open_group_id');
+  if (openGroupId) {
+    localStorage.removeItem('open_group_id'); // Limpiar la bandera
+
+    const newChatItem = document.querySelector(`.chatitem[data-chat="group-${openGroupId}"]`);
+    if (newChatItem) {
+      const id = parseInt(openGroupId);
+      const name = newChatItem.dataset.name;
+      const type = newChatItem.dataset.type;
+
+      // Activar visualmente el item y abrir la conversación
+      document.querySelectorAll('.chatitem.active').forEach(el => el.classList.remove('active'));
+      newChatItem.classList.add('active');
+      openConversation(id, name, type);
+    }
+  }
 }
 
 /* =========================
@@ -166,6 +198,9 @@ function openConversation(id, name, type) {
   
   // Actualizar UI
   convHeader.querySelector('.title').textContent = name;
+  // Ocultar la promo (asumimos id='placeholderPromo' en chats.html), lista y mostrar el chat
+  const placeholderPromo = document.getElementById('placeholderPromo');
+  if (placeholderPromo) placeholderPromo.hidden = true; 
   chatlist.hidden = true;
   conversation.hidden = false;
   
@@ -179,12 +214,12 @@ function openConversation(id, name, type) {
     realtimeChat.stopChat(currentChatPolling);
   }
   
-  // Cargar mensajes del localStorage como backup
-  const localMessages = conversations[`${type}-${id}`] || [];
-  renderMessages(localMessages);
+  // Limpiar visualmente la conversación anterior
+  convBody.innerHTML = '';
   
   // Iniciar chat en tiempo real
   currentChatPolling = id;
+  // La función startChat llamará a handleNewMessages con el historial inicial
   realtimeChat.startChat(id, type, handleNewMessages);
   
   // Scroll y focus
@@ -199,11 +234,13 @@ function handleNewMessages(newMessages) {
   if (!newMessages || newMessages.length === 0) return;
   
   const chatKey = `${currentChatType}-${currentChatId}`;
-  conversations[chatKey] = conversations[chatKey] || [];
+  window.localMessageCache[chatKey] = window.localMessageCache[chatKey] || [];
+  
+  const messagesToRender = window.localMessageCache[chatKey]; // Usamos la caché en memoria
   
   newMessages.forEach(msg => {
     // Evitar duplicados
-    const exists = conversations[chatKey].some(m => m.id === msg.id);
+    const exists = messagesToRender.some(m => m.id === msg.id);
     if (exists) return;
     
     // Descifrar si es necesario
@@ -212,8 +249,8 @@ function handleNewMessages(newMessages) {
       messageText = ChatUtils.decrypt(messageText);
     }
     
-    // Agregar al array local
-    conversations[chatKey].push({
+    // Agregar al array local (formato simplificado para renderMessages)
+    messagesToRender.push({
       id: msg.id,
       me: msg.is_mine,
       text: messageText,
@@ -242,11 +279,10 @@ function handleNewMessages(newMessages) {
     }
   });
   
-  // Guardar en localStorage
-  localStorage.setItem('conversations', JSON.stringify(conversations));
+  // ELIMINADO: Guardar en localStorage
   
   // Re-renderizar
-  renderMessages(conversations[chatKey]);
+  renderMessages(messagesToRender);
   
   // Auto-scroll si está cerca del final
   const isNearBottom = convBody.scrollHeight - convBody.scrollTop - convBody.clientHeight < 100;
@@ -325,8 +361,11 @@ async function sendMessage() {
       // Agregar localmente (optimistic update)
       const chatKey = `${currentChatType}-${currentChatId}`;
       const time = ChatUtils.formatTime(result.sentAt);
-      conversations[chatKey] = conversations[chatKey] || [];
-      conversations[chatKey].push({ 
+      window.localMessageCache[chatKey] = window.localMessageCache[chatKey] || []; // Usamos caché en memoria
+      
+      const messagesToRender = window.localMessageCache[chatKey];
+
+      messagesToRender.push({ 
         id: result.messageId,
         me: true, 
         text, 
@@ -334,8 +373,8 @@ async function sendMessage() {
         type: 'text'
       });
       
-      localStorage.setItem('conversations', JSON.stringify(conversations));
-      renderMessages(conversations[chatKey]);
+      // ELIMINADO: localStorage.setItem('conversations', JSON.stringify(conversations));
+      renderMessages(messagesToRender);
       
       msgInput.value = '';
     } else {
@@ -363,6 +402,11 @@ function closeConversationToPromo() {
   
   currentChatId = null;
   currentChatType = null;
+  
+  // Mostrar el placeholder/promo (asumimos id='placeholderPromo' en chats.html)
+  const placeholderPromo = document.getElementById('placeholderPromo');
+  if (placeholderPromo) placeholderPromo.hidden = false;
+  
   chatlist.hidden = false;
   conversation.hidden = true;
   closeSidePanel();
