@@ -27,13 +27,32 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-$action = $_GET['action'] ?? $_POST['action'] ?? '';
+// Obtener conexión a la base de datos (✅ FIX 1: Inicialización de $conn)
+try {
+    $conn = getDBConnection();
+} catch (Exception $e) {
+    // getDBConnection ya maneja la salida si falla
+    exit(); 
+}
+
+// Parsear cuerpo JSON para acciones POST (✅ FIX 2: Pre-procesamiento de JSON para obtener 'action')
+$data = [];
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = file_get_contents('php://input');
+    // Si no es JSON válido, $data será array vacío.
+    $data = json_decode($input, true) ?? [];
+}
+
+// Obtener acción: GET param > POST body
+$action = $_GET['action'] ?? $data['action'] ?? '';
+
 $userId = $_SESSION['user_id'];
 
 try {
     switch ($action) {
         case 'send':
-            sendMessage($conn, $userId);
+            // ✅ FIX 3: Pasar el cuerpo JSON ya parseado a la función
+            sendMessage($conn, $userId, $data); 
             break;
             
         case 'get':
@@ -55,11 +74,15 @@ try {
     ]);
 }
 
+// Cerrar conexión
+closeDBConnection($conn);
+
 /**
  * Enviar un mensaje
+ * (✅ MODIFICACIÓN: Acepta $data como tercer parámetro)
  */
-function sendMessage($conn, $userId) {
-    $data = json_decode(file_get_contents('php://input'), true);
+function sendMessage($conn, $userId, $data) { 
+    // ❌ CÓDIGO ELIMINADO: ya no lee el input aquí.
     
     $receiverId = $data['receiver_id'] ?? null;
     $groupId = $data['group_id'] ?? null;
@@ -348,6 +371,4 @@ function pollMessages($conn, $userId) {
         'timeout' => true
     ]);
 }
-
-$conn->close();
 ?>
