@@ -1,7 +1,7 @@
 <?php
 /**
- * auth.php - VERSIÓN ORIGINAL + LOGOUT
- * Solo se agregó el caso 'logout', todo lo demás igual
+ * auth.php - CORREGIDO
+ * Mejor detección del parámetro action
  */
 
 header('Content-Type: application/json');
@@ -16,8 +16,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 session_start();
 require_once 'config.php';
 
-$action = $_GET['action'] ?? $_POST['action'] ?? '';
+// Obtener action de varias formas posibles
+$action = '';
 
+// 1. Desde GET
+if (isset($_GET['action'])) {
+    $action = $_GET['action'];
+}
+
+// 2. Desde POST
+if (empty($action) && isset($_POST['action'])) {
+    $action = $_POST['action'];
+}
+
+// 3. Desde JSON body
+if (empty($action)) {
+    $input = file_get_contents('php://input');
+    if (!empty($input)) {
+        $data = json_decode($input, true);
+        if (isset($data['action'])) {
+            $action = $data['action'];
+        }
+    }
+}
+
+// REGISTER
 if ($action === 'register') {
     $data = json_decode(file_get_contents('php://input'), true);
     
@@ -38,13 +61,14 @@ if ($action === 'register') {
     if ($stmt->execute()) {
         $_SESSION['user_id'] = $conn->insert_id;
         $_SESSION['username'] = $username;
-        echo json_encode(['success' => true, 'user' => ['id' => $conn->insert_id, 'username' => $username]]);
+        echo json_encode(['success' => true, 'user' => ['id' => $conn->insert_id, 'username' => $username, 'email' => $email]]);
     } else {
         echo json_encode(['success' => false, 'error' => 'Error al registrar usuario']);
     }
     exit;
 }
 
+// LOGIN
 if ($action === 'login') {
     $data = json_decode(file_get_contents('php://input'), true);
     
@@ -56,7 +80,7 @@ if ($action === 'login') {
         exit;
     }
     
-    $stmt = $conn->prepare("SELECT id, username, password FROM users WHERE email = ?");
+    $stmt = $conn->prepare("SELECT id, username, email, password FROM users WHERE email = ?");
     $stmt->bind_param('s', $email);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -65,13 +89,21 @@ if ($action === 'login') {
         if (password_verify($password, $row['password'])) {
             $_SESSION['user_id'] = $row['id'];
             $_SESSION['username'] = $row['username'];
+            $_SESSION['email'] = $row['email'];
             
             // Actualizar estado online
             $updateStmt = $conn->prepare("UPDATE users SET is_online = 1 WHERE id = ?");
             $updateStmt->bind_param('i', $row['id']);
             $updateStmt->execute();
             
-            echo json_encode(['success' => true, 'user' => ['id' => $row['id'], 'username' => $row['username']]]);
+            echo json_encode([
+                'success' => true, 
+                'user' => [
+                    'id' => $row['id'], 
+                    'username' => $row['username'],
+                    'email' => $row['email']
+                ]
+            ]);
         } else {
             echo json_encode(['success' => false, 'error' => 'Contraseña incorrecta']);
         }
@@ -81,6 +113,7 @@ if ($action === 'login') {
     exit;
 }
 
+// CHECK
 if ($action === 'check') {
     if (isset($_SESSION['user_id'])) {
         echo json_encode([
@@ -97,16 +130,14 @@ if ($action === 'check') {
     exit;
 }
 
-// ⭐ NUEVO: Solo agregamos el caso logout
+// LOGOUT
 if ($action === 'logout') {
-    // Actualizar estado offline en BD
     if (isset($_SESSION['user_id'])) {
         $stmt = $conn->prepare("UPDATE users SET is_online = 0, last_seen = NOW() WHERE id = ?");
         $stmt->bind_param('i', $_SESSION['user_id']);
         $stmt->execute();
     }
     
-    // Destruir sesión
     $_SESSION = array();
     
     if (isset($_COOKIE[session_name()])) {
@@ -119,5 +150,6 @@ if ($action === 'logout') {
     exit;
 }
 
-echo json_encode(['success' => false, 'error' => 'Acción no válida']);
+// Si llegamos aquí, acción no válida
+echo json_encode(['success' => false, 'error' => 'Acción no válida: ' . $action]);
 ?>
