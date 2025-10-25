@@ -82,8 +82,9 @@
 .chat-layout{
   display: grid;
   grid-template-columns: 340px 1fr;
-  min-height: 100dvh;
-  padding-top: 64px; /* espacio header */
+  /* CAMBIO: La altura de la cuadrícula es fija para anclar los scrolls */
+  height: calc(100dvh - 64px); 
+  padding-top: 64px; /* espacio header (lo compensamos arriba) */
   color: var(--text);
 }
 
@@ -92,10 +93,17 @@
   background: rgba(10,14,24,.70);
   border-right: 1px solid rgba(255,255,255,.10);
   backdrop-filter: blur(8px);
+  /* CAMBIO: Forzar altura 100% para ocupar la celda grid */
+  height: 100%; 
+  /* CAMBIO: Usar flexbox para que el contenido se estire */
+  display: flex;
+  flex-direction: column;
+  /* CAMBIO: Activar scroll para la barra lateral */
+  overflow-y: auto; 
 }
 
 /* Buscador con botón + */
-.sidebar-search{ padding: 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.sidebar-search{ padding: 12px; border-bottom: 1px solid rgba(255,255,255,.08); flex-shrink: 0; }
 .search-wrap{ position: relative; }
 .create-group-btn{
   position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
@@ -125,6 +133,7 @@
 .sidebar-tabs{
   display:grid; grid-template-columns: repeat(3,1fr);
   gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08);
+  flex-shrink: 0; /* Evitar que las tabs se encojan */
 }
 .tab{
   background: rgba(20,24,34,.7); color:var(--text);
@@ -155,8 +164,8 @@
   right: -2px;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
   border: 2px solid var(--bg);
+  border-radius: 50%;
   background-color: var(--brand);
 }
 .meta .row1{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-weight:800; }
@@ -221,7 +230,12 @@
 /* ======= Conversación ======= */
 .conversation.card.glass{
   max-width: 980px; margin:16px auto;
-  display:grid; grid-template-rows:auto 1fr auto; gap:0;
+  display:grid; 
+  /* CAMBIO: 1fr para que el conv-body ocupe el espacio flexible */
+  grid-template-rows:auto 1fr auto; 
+  gap:0;
+  /* CAMBIO: Forzar altura fija (ventana - header - margen) */
+  height: calc(100dvh - 64px - 32px); 
   min-height: calc(100dvh - 64px - 48px);
 }
 
@@ -241,7 +255,9 @@
 
 /* Área de mensajes */
 .conv-body{
-  padding:14px; display:grid; align-content:start; gap:10px; overflow:auto;
+  padding:14px; display:grid; align-content:start; gap:10px; 
+  /* MANTENER: Scroll solo en el cuerpo de mensajes */
+  overflow-y: auto;
   background: radial-gradient(1200px 600px at 50% -20%, rgba(255,255,255,.04), transparent);
 }
 
