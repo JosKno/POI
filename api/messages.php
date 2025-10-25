@@ -1,7 +1,7 @@
 <?php
 /**
  * messages.php
- * API para mensajes en tiempo real - ADAPTADA A TU BASE DE DATOS
+ * API para mensajes en tiempo real - MIGRACIÓN A WEBSOCKETS
  */
 
 header('Access-Control-Allow-Origin: *');
@@ -27,19 +27,17 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Obtener conexión a la base de datos (✅ FIX 1: Inicialización de $conn)
+// Obtener conexión a la base de datos
 try {
     $conn = getDBConnection();
 } catch (Exception $e) {
-    // getDBConnection ya maneja la salida si falla
     exit(); 
 }
 
-// Parsear cuerpo JSON para acciones POST (✅ FIX 2: Pre-procesamiento de JSON para obtener 'action')
+// Parsear cuerpo JSON para acciones POST
 $data = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = file_get_contents('php://input');
-    // Si no es JSON válido, $data será array vacío.
     $data = json_decode($input, true) ?? [];
 }
 
@@ -51,7 +49,6 @@ $userId = $_SESSION['user_id'];
 try {
     switch ($action) {
         case 'send':
-            // ✅ FIX 3: Pasar el cuerpo JSON ya parseado a la función
             sendMessage($conn, $userId, $data); 
             break;
             
@@ -59,9 +56,10 @@ try {
             getMessages($conn, $userId);
             break;
             
-        case 'poll':
-            pollMessages($conn, $userId);
-            break;
+        // ❌ ELIMINADO: Ya no se usa 'poll' con WebSockets
+        // case 'poll':
+        //     pollMessages($conn, $userId);
+        //     break;
             
         default:
             throw new Exception('Acción no válida');
@@ -79,11 +77,8 @@ closeDBConnection($conn);
 
 /**
  * Enviar un mensaje
- * (✅ MODIFICACIÓN: Acepta $data como tercer parámetro)
  */
 function sendMessage($conn, $userId, $data) { 
-    // ❌ CÓDIGO ELIMINADO: ya no lee el input aquí.
-    
     $receiverId = $data['receiver_id'] ?? null;
     $groupId = $data['group_id'] ?? null;
     $messageText = trim($data['message'] ?? '');
@@ -153,6 +148,7 @@ function sendMessage($conn, $userId, $data) {
     }
     
     $messageId = $conn->insert_id;
+    $sentAt = date('Y-m-d H:i:s');
     
     // Obtener información del remitente
     $stmt = $conn->prepare("
@@ -165,6 +161,10 @@ function sendMessage($conn, $userId, $data) {
     $result = $stmt->get_result();
     $sender = $result->fetch_assoc();
     
+    // ❌ ELIMINADO: Notificación a WS (Comentado porque requiere lógica compleja de host)
+    // En un sistema real, aquí se usaría un cliente HTTP/WS para notificar al servidor WS.
+    // Ej: file_get_contents('http://localhost:8080/push?message_id=' . $messageId);
+    
     echo json_encode([
         'success' => true,
         'message_id' => $messageId,
@@ -174,16 +174,18 @@ function sendMessage($conn, $userId, $data) {
             'avatar_url' => $sender['avatar_url'],
             'gems' => $sender['gems']
         ],
-        'sent_at' => date('Y-m-d H:i:s')
+        'sent_at' => $sentAt
     ]);
 }
 
 /**
  * Obtener mensajes de un chat (privado o grupal)
+ * Se mantiene para cargar historial (action=get)
  */
 function getMessages($conn, $userId) {
     $receiverId = $_GET['receiver_id'] ?? null;
     $groupId = $_GET['group_id'] ?? null;
+    // Se cambia lastMessageId a 0 para que siempre cargue el historial completo o los últimos 50
     $lastMessageId = $_GET['last_id'] ?? 0;
     $limit = min(intval($_GET['limit'] ?? 50), 100);
     
@@ -289,86 +291,5 @@ function getMessages($conn, $userId) {
     ]);
 }
 
-/**
- * Long polling: espera hasta que haya mensajes nuevos
- */
-function pollMessages($conn, $userId) {
-    $receiverId = $_GET['receiver_id'] ?? null;
-    $groupId = $_GET['group_id'] ?? null;
-    $lastMessageId = intval($_GET['last_id'] ?? 0);
-    
-    // Timeout de 30 segundos
-    $timeout = 30;
-    $startTime = time();
-    
-    while (time() - $startTime < $timeout) {
-        if ($groupId) {
-            $stmt = $conn->prepare("
-                SELECT COUNT(*) as count 
-                FROM messages 
-                WHERE group_id = ? AND id > ?
-            ");
-            $stmt->bind_param('ii', $groupId, $lastMessageId);
-            
-        } else if ($receiverId) {
-            // Obtener conversationId
-            $stmt = $conn->prepare("
-                SELECT id FROM conversations 
-                WHERE (user1_id = ? AND user2_id = ?) 
-                   OR (user1_id = ? AND user2_id = ?)
-                LIMIT 1
-            ");
-            $stmt->bind_param('iiii', $userId, $receiverId, $receiverId, $userId);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
-            $conversationId = null;
-            if ($row = $result->fetch_assoc()) {
-                $conversationId = $row['id'];
-            }
-            
-            if ($conversationId) {
-                $stmt = $conn->prepare("
-                    SELECT COUNT(*) as count 
-                    FROM messages 
-                    WHERE conversation_id = ? AND id > ?
-                ");
-                $stmt->bind_param('ii', $conversationId, $lastMessageId);
-            } else {
-                // No hay conversación, devolver vacío
-                echo json_encode([
-                    'success' => true,
-                    'messages' => [],
-                    'count' => 0,
-                    'timeout' => true
-                ]);
-                return;
-            }
-            
-        } else {
-            throw new Exception('Debes especificar receiver_id o group_id');
-        }
-        
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        
-        if ($row['count'] > 0) {
-            // Hay mensajes nuevos, obtenerlos
-            getMessages($conn, $userId);
-            return;
-        }
-        
-        // Esperar 1 segundo antes de volver a verificar
-        sleep(1);
-    }
-    
-    // Timeout alcanzado, devolver array vacío
-    echo json_encode([
-        'success' => true,
-        'messages' => [],
-        'count' => 0,
-        'timeout' => true
-    ]);
-}
+// ❌ ELIMINADO: La función pollMessages ha sido eliminada por la migración a WS.
 ?>
