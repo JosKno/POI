@@ -67,7 +67,7 @@ const chatlist = document.getElementById('chatlist');
 const conversation = document.getElementById('conversation');
 const convHeader = document.querySelector('.conv-header');
 const convBody = document.querySelector('.conv-body');
-const msgInput = document.getElementById('msgInput');
+// Se mantienen las referencias por ID para compatibilidad y uso de querySelector para elementos sin ID
 const sendBtn = document.getElementById('sendBtn');
 const convBack = document.getElementById('convBack');
 
@@ -347,9 +347,11 @@ function openConversation(id, name, type) {
     convBody.scrollTop = convBody.scrollHeight;
   }
   
-  // Focus en input
-  if (msgInput) {
-    msgInput.focus();
+  // Focus en input y LIMPIAR TEXTO PERSISTENTE (✅ CORRECCIÓN: Limpiar input)
+  const inputElement = document.getElementById('msgInput'); // Usar ID del HTML
+  if (inputElement) {
+    inputElement.value = ''; // Limpiar el input
+    inputElement.focus();
   }
   
   console.log('Conversación abierta exitosamente');
@@ -431,7 +433,7 @@ function renderMessages(messages) {
       ? `<a href="${msg.file_url}" target="_blank">📎 ${msg.text}</a>`
       : ChatUtils.escapeHtml(msg.text);
     
-    // NOTA: El nombre de usuario se estiliza con CSS para ser azul.
+    // NOTA: El nombre de usuario solo se muestra en grupos para mensajes de otros
     msgEl.innerHTML = `
       <div class="msg-content">
         ${!msg.me && currentChatType === 'group' ? `<div class="msg-user">${ChatUtils.escapeHtml(msg.user || 'Usuario')}</div>` : ''}
@@ -448,12 +450,13 @@ function renderMessages(messages) {
    ENVIAR MENSAJE
 ========================== */
 async function sendMessage() {
-  // NOTA: Usamos el query selector para encontrar el input con la clase .msg-input
-  const text = document.querySelector('.conv-compose .msg-input')?.value.trim() || '';
-  if (!text || !currentChatId || !currentChatType) return;
+  // CORRECCIÓN: Usar document.getElementById('msgInput') para referenciar el input
+  const inputElement = document.getElementById('msgInput');
+  const text = inputElement ? inputElement.value.trim() : '';
 
-  const inputElement = document.querySelector('.conv-compose .msg-input');
+  if (!text || !currentChatId || !currentChatType) return;
   
+  // Deshabilitar botones/input
   inputElement.disabled = true;
   sendBtn.disabled = true;
   
@@ -487,6 +490,7 @@ async function sendMessage() {
       localStorage.setItem('conversations', JSON.stringify(conversations));
       renderMessages(conversations[chatKey]);
       
+      // Asegurar la limpieza del input después de enviar
       inputElement.value = '';
       
       if (convBody) {
@@ -499,6 +503,7 @@ async function sendMessage() {
     console.error('Error:', error);
     showToast('No se pudo enviar el mensaje', 'error');
   } finally {
+    // Habilitar input y botón
     inputElement.disabled = false;
     sendBtn.disabled = false;
     if (inputElement) inputElement.focus();
@@ -587,9 +592,8 @@ function openConfirm(message, callback) {
    EVENT LISTENERS
 ========================== */
 function setupEventListeners() {
-  // CORRECCIÓN: El input de mensaje en chats.html no tiene ID, se usa una clase
-  // Usamos querySelector para el input de mensaje y el botón de enviar.
-  const msgInputFinal = document.querySelector('.conv-compose .msg-input');
+  // CORRECCIÓN: Usar document.getElementById('msgInput') para referenciar el input
+  const msgInputFinal = document.getElementById('msgInput');
   const sendBtnFinal = document.getElementById('sendBtn');
 
 
