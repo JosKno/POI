@@ -1,5 +1,5 @@
 /**
- * chats.js - VERSIÓN COMPLETAMENTE CORREGIDA
+ * chats.js - VERSIÓN CON OPTIMIZACIÓN DE ECHOING
  * Con validación de JSON y apertura de conversaciones funcionando
  */
 
@@ -447,24 +447,48 @@ function renderMessages(messages) {
 }
 
 /* =========================
-   ENVIAR MENSAJE
+   ENVIAR MENSAJE (✅ OPTIMIZACIÓN DE ECHOING)
 ========================== */
 async function sendMessage() {
-  // CORRECCIÓN: Usar document.getElementById('msgInput') para referenciar el input
   const inputElement = document.getElementById('msgInput');
   const text = inputElement ? inputElement.value.trim() : '';
 
   if (!text || !currentChatId || !currentChatType) return;
   
-  // Deshabilitar botones/input
+  // 1. DESHABILITAR INPUT
   inputElement.disabled = true;
   sendBtn.disabled = true;
+
+  // --- START ECHOING (RENDERIZADO INMEDIATO) ---
+  const chatKey = `${currentChatType}-${currentChatId}`;
+  const now = new Date().toISOString(); 
   
+  // 2. Crear estructura de mensaje temporal
+  const tempMessage = { 
+    id: Date.now(), // ID temporal para rastrear el mensaje
+    me: true, 
+    text: text, 
+    time: ChatUtils.formatTime(now),
+    type: 'text',
+    status: 'sending' // Puedes usar esto en CSS para un icono de reloj
+  };
+
+  // 3. Agregar a cache local y renderizar inmediatamente
+  conversations[chatKey] = conversations[chatKey] || [];
+  conversations[chatKey].push(tempMessage);
+  localStorage.setItem('conversations', JSON.stringify(conversations));
+  renderMessages(conversations[chatKey]);
+
+  // 4. Limpiar input y hacer scroll
+  inputElement.value = '';
+  if (convBody) convBody.scrollTop = convBody.scrollHeight;
+
   try {
     const messageToSend = encryptionEnabled 
       ? ChatUtils.encrypt(text) 
       : text;
     
+    // 5. Enviar mensaje (Punto de Latencia)
     const result = await realtimeChat.sendMessage(
       currentChatId, 
       currentChatType, 
@@ -475,35 +499,33 @@ async function sendMessage() {
       }
     );
     
+    // 6. Manejar la respuesta del servidor
     if (result.success) {
-      const chatKey = `${currentChatType}-${currentChatId}`;
-      const time = ChatUtils.formatTime(result.sentAt);
-      conversations[chatKey] = conversations[chatKey] || [];
-      conversations[chatKey].push({ 
-        id: result.messageId,
-        me: true, 
-        text, 
-        time,
-        type: 'text'
-      });
-      
-      localStorage.setItem('conversations', JSON.stringify(conversations));
-      renderMessages(conversations[chatKey]);
-      
-      // Asegurar la limpieza del input después de enviar
-      inputElement.value = '';
-      
-      if (convBody) {
-        convBody.scrollTop = convBody.scrollHeight;
+      // Encontrar el mensaje temporal y actualizar sus datos
+      const index = conversations[chatKey].findIndex(m => m.id === tempMessage.id);
+      if (index !== -1) {
+        conversations[chatKey][index].id = result.messageId;
+        conversations[chatKey][index].time = ChatUtils.formatTime(result.sent_at);
+        delete conversations[chatKey][index].status;
       }
+      localStorage.setItem('conversations', JSON.stringify(conversations));
+      // No se necesita re-renderizar si no hay un indicador visual de 'enviando'
     } else {
-      throw new Error(result.error || 'Error enviando mensaje');
+      // Si falló, mostrar error y eliminar el mensaje temporal
+      showToast(result.error || 'Error enviando mensaje', 'error');
+      conversations[chatKey] = conversations[chatKey].filter(m => m.id !== tempMessage.id);
+      localStorage.setItem('conversations', JSON.stringify(conversations));
+      renderMessages(conversations[chatKey]); // Re-renderizar para eliminar el mensaje fallido
     }
   } catch (error) {
+    // Si falló la red, eliminar el mensaje temporal
     console.error('Error:', error);
-    showToast('No se pudo enviar el mensaje', 'error');
+    showToast('Error de conexión. Intenta de nuevo.', 'error');
+    conversations[chatKey] = conversations[chatKey].filter(m => m.id !== tempMessage.id);
+    localStorage.setItem('conversations', JSON.stringify(conversations));
+    renderMessages(conversations[chatKey]);
   } finally {
-    // Habilitar input y botón
+    // 7. Habilitar input y botón
     inputElement.disabled = false;
     sendBtn.disabled = false;
     if (inputElement) inputElement.focus();
@@ -592,7 +614,6 @@ function openConfirm(message, callback) {
    EVENT LISTENERS
 ========================== */
 function setupEventListeners() {
-  // CORRECCIÓN: Usar document.getElementById('msgInput') para referenciar el input
   const msgInputFinal = document.getElementById('msgInput');
   const sendBtnFinal = document.getElementById('sendBtn');
 
