@@ -8,7 +8,6 @@ use Ratchet\Http\HttpServer;
 use Ratchet\WebSocket\WsServer;
 
 require __DIR__ . '/vendor/autoload.php';
-// Asegúrate de que config.php sea accesible
 require_once __DIR__ . '/api/config.php'; 
 
 // Definimos el puerto donde correrá el servidor WS (interno a Railway)
@@ -19,7 +18,6 @@ define('WS_PORT', 8080);
  */
 class ChatServer implements MessageComponentInterface {
     protected $clients;
-    // Mapa para almacenar qué usuario está en qué conexión
     protected $users; 
 
     public function __construct() {
@@ -44,25 +42,19 @@ class ChatServer implements MessageComponentInterface {
             return;
         }
 
-        // 2. Recepción de Nuevo Mensaje
+        // 2. Recepción de Notificación de Mensaje Guardado
         if ($action === 'new_message_saved' && isset($data['message'])) {
-            // Este mensaje proviene del cliente que acaba de guardar su mensaje en la DB (vía fetch)
-            
             $message = $data['message'];
-            $groupId = $message['group_id'] ?? null;
-            $senderId = $message['sender_id'];
+            $senderId = $message['sender']['id'];
 
             $notification = [
                 'type' => 'new_message',
                 'message' => $message,
             ];
             
-            // Enviar notificación a todos los clientes que deberían recibirla
+            // Enviar notificación a todos los clientes excepto al remitente (Self-Push lo maneja el cliente)
             foreach ($this->clients as $client) {
-                // Lógica de filtrado simplificada: Si no es el remitente, lo enviamos.
-                // NOTA: Para chats privados o grupos, se necesita lógica de membresía
-                // o conversación. Por simplicidad, notificaremos a todos excepto a sí mismo.
-                
+                // Notificar si está autenticado y no es el remitente
                 if (isset($client->user_id) && $client->user_id != $senderId) {
                     $client->send(json_encode($notification));
                 }
@@ -73,7 +65,6 @@ class ChatServer implements MessageComponentInterface {
     public function onClose(ConnectionInterface $conn) {
         $this->clients->detach($conn);
         
-        // Eliminar el usuario del mapa de usuarios
         if (isset($conn->user_id)) {
             unset($this->users[$conn->user_id]);
         }

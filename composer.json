@@ -1,13 +1,8 @@
 {
     "require": {
-        "cboden/ratchet": "^0.4.4",
-        "ext-mysqli": "*",
-        "ext-json": "*"
+        "cboden/ratchet": "^0.4.4"
     },
     "autoload": {
-        "psr-4": {
-            "App\\": "src/"
-        },
         "files": [
             "api/config.php"
         ]

@@ -56,11 +56,6 @@ try {
             getMessages($conn, $userId);
             break;
             
-        // ❌ ELIMINADO: Ya no se usa 'poll' con WebSockets
-        // case 'poll':
-        //     pollMessages($conn, $userId);
-        //     break;
-            
         default:
             throw new Exception('Acción no válida');
     }
@@ -100,7 +95,6 @@ function sendMessage($conn, $userId, $data) {
     
     // Si es chat privado, obtener o crear conversación
     if ($receiverId) {
-        // Buscar conversación existente
         $stmt = $conn->prepare("
             SELECT id FROM conversations 
             WHERE (user1_id = ? AND user2_id = ?) 
@@ -114,7 +108,6 @@ function sendMessage($conn, $userId, $data) {
         if ($row = $result->fetch_assoc()) {
             $conversationId = $row['id'];
         } else {
-            // Crear nueva conversación
             $stmt = $conn->prepare("
                 INSERT INTO conversations (user1_id, user2_id) 
                 VALUES (?, ?)
@@ -161,36 +154,34 @@ function sendMessage($conn, $userId, $data) {
     $result = $stmt->get_result();
     $sender = $result->fetch_assoc();
     
-    // ❌ ELIMINADO: Notificación a WS (Comentado porque requiere lógica compleja de host)
-    // En un sistema real, aquí se usaría un cliente HTTP/WS para notificar al servidor WS.
-    // Ej: file_get_contents('http://localhost:8080/push?message_id=' . $messageId);
-    
     echo json_encode([
         'success' => true,
         'message_id' => $messageId,
+        'group_id' => $groupId, // Añadir ID de grupo
+        'conversation_id' => $conversationId, // Añadir ID de conversación
+        'message' => $messageText, // Añadir el contenido del mensaje
+        'type' => $messageType,
+        'encrypted' => (bool)$isEncrypted,
         'sender' => [
             'id' => $userId,
             'username' => $sender['username'],
             'avatar_url' => $sender['avatar_url'],
-            'gems' => $sender['gems']
+            'gems' => intval($sender['gems'])
         ],
         'sent_at' => $sentAt
     ]);
 }
 
 /**
- * Obtener mensajes de un chat (privado o grupal)
- * Se mantiene para cargar historial (action=get)
+ * Obtener mensajes de un chat (se mantiene para cargar historial)
  */
 function getMessages($conn, $userId) {
     $receiverId = $_GET['receiver_id'] ?? null;
     $groupId = $_GET['group_id'] ?? null;
-    // Se cambia lastMessageId a 0 para que siempre cargue el historial completo o los últimos 50
     $lastMessageId = $_GET['last_id'] ?? 0;
     $limit = min(intval($_GET['limit'] ?? 50), 100);
     
     if ($groupId) {
-        // Mensajes grupales
         $stmt = $conn->prepare("
             SELECT 
                 m.id,
@@ -212,7 +203,6 @@ function getMessages($conn, $userId) {
         $stmt->bind_param('iii', $groupId, $lastMessageId, $limit);
         
     } else if ($receiverId) {
-        // Mensajes privados - primero obtener/crear conversación
         $stmt = $conn->prepare("
             SELECT id FROM conversations 
             WHERE (user1_id = ? AND user2_id = ?) 
@@ -249,7 +239,6 @@ function getMessages($conn, $userId) {
             ");
             $stmt->bind_param('iii', $conversationId, $lastMessageId, $limit);
         } else {
-            // No hay conversación todavía
             echo json_encode([
                 'success' => true,
                 'messages' => [],
@@ -290,6 +279,4 @@ function getMessages($conn, $userId) {
         'count' => count($messages)
     ]);
 }
-
-// ❌ ELIMINADO: La función pollMessages ha sido eliminada por la migración a WS.
 ?>

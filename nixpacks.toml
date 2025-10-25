@@ -1,5 +1,7 @@
 [phases.setup]
-nixPkgs = ['php82', 'php82Extensions.mysqli', 'php82Extensions.pdo', 'php82Extensions.pdo_mysql', 'composer']
+# CORRECCIÓN: Usar aliases estándar (php, phpExtensions) para evitar errores de definición de variables.
+# Esto instala la última versión de PHP LTS (generalmente 8.2+) con Composer incluido.
+nixPkgs = ['php', 'phpExtensions.mysqli', 'phpExtensions.pdo_mysql', 'phpExtensions.pdo']
 
 [phases.install]
 cmds = ['composer install --no-dev --prefer-dist', 'echo "PHP y Composer instalados correctamente"']
