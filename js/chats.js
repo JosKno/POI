@@ -258,9 +258,15 @@ function createChatItem(id, name, type, avatarUrl = null, memberCount = null, is
     `👥 Grupo (${memberCount || '0'} miembros)` : 
     (isOnline ? '🟢 En línea' : 'Chat privado');
   
+  // CORRECCIÓN: Usar la primera letra del nombre como contenido del avatar si no hay URL
+  const avatarContent = avatarUrl 
+    ? `<img src="${avatar}" alt="${name}" class="avatar" onerror="this.src='assets/img/icon_iniciarsesion.png'" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">`
+    : `<div class="avatar ${type === 'group' ? 'grp' : ''}">${ChatUtils.escapeHtml(name.charAt(0).toUpperCase())}</div>`;
+
+
   chatItem.innerHTML = `
     <div style="position:relative;">
-      <img src="${avatar}" alt="${name}" class="avatar" onerror="this.src='assets/img/icon_iniciarsesion.png'" style="width:50px;height:50px;border-radius:50%;object-fit:cover;">
+      ${avatarContent}
       ${onlineIndicator}
     </div>
     <div class="chatinfo">
@@ -302,14 +308,20 @@ function openConversation(id, name, type) {
     titleEl.textContent = name;
   }
   
+  // CORRECCIÓN: Actualizar avatar con la inicial del nombre
+  const convAvatar = document.getElementById('convAvatar');
+  if (convAvatar) {
+      convAvatar.textContent = name.charAt(0).toUpperCase();
+  }
+
   // 1. Mostrar conversación
   if (conversation) conversation.hidden = false;
   
-  // 2. Ocultar el placeholder de bienvenida (✅ CORRECCIÓN SOLAPAMIENTO)
+  // 2. Ocultar el placeholder de bienvenida
   const placeholderPromo = document.getElementById('placeholderPromo');
   if (placeholderPromo) placeholderPromo.hidden = true;
   
-  // 3. NO ocultar la lista, se mantiene visible (✅ CORRECCIÓN BARRA LATERAL)
+  // 3. NO ocultar la lista, se mantiene visible
   
   // Mostrar/ocultar botón de videollamada
   if (btnVideo) {
@@ -419,9 +431,10 @@ function renderMessages(messages) {
       ? `<a href="${msg.file_url}" target="_blank">📎 ${msg.text}</a>`
       : ChatUtils.escapeHtml(msg.text);
     
+    // NOTA: El nombre de usuario se estiliza con CSS para ser azul.
     msgEl.innerHTML = `
       <div class="msg-content">
-        ${!msg.me ? `<div class="msg-user">${ChatUtils.escapeHtml(msg.user || 'Usuario')}</div>` : ''}
+        ${!msg.me && currentChatType === 'group' ? `<div class="msg-user">${ChatUtils.escapeHtml(msg.user || 'Usuario')}</div>` : ''}
         <div class="msg-text">${content}</div>
         <div class="msg-time">${msg.time || ''}</div>
       </div>
@@ -435,10 +448,13 @@ function renderMessages(messages) {
    ENVIAR MENSAJE
 ========================== */
 async function sendMessage() {
-  const text = msgInput ? msgInput.value.trim() : '';
+  // NOTA: Usamos el query selector para encontrar el input con la clase .msg-input
+  const text = document.querySelector('.conv-compose .msg-input')?.value.trim() || '';
   if (!text || !currentChatId || !currentChatType) return;
+
+  const inputElement = document.querySelector('.conv-compose .msg-input');
   
-  msgInput.disabled = true;
+  inputElement.disabled = true;
   sendBtn.disabled = true;
   
   try {
@@ -471,7 +487,7 @@ async function sendMessage() {
       localStorage.setItem('conversations', JSON.stringify(conversations));
       renderMessages(conversations[chatKey]);
       
-      msgInput.value = '';
+      inputElement.value = '';
       
       if (convBody) {
         convBody.scrollTop = convBody.scrollHeight;
@@ -483,9 +499,9 @@ async function sendMessage() {
     console.error('Error:', error);
     showToast('No se pudo enviar el mensaje', 'error');
   } finally {
-    msgInput.disabled = false;
+    inputElement.disabled = false;
     sendBtn.disabled = false;
-    if (msgInput) msgInput.focus();
+    if (inputElement) inputElement.focus();
   }
 }
 
@@ -504,7 +520,7 @@ function closeConversationToPromo() {
   // Ocultar conversación
   if (conversation) conversation.hidden = true;
   
-  // Mostrar placeholder de bienvenida (✅ CORRECCIÓN SOLAPAMIENTO)
+  // Mostrar placeholder de bienvenida
   const placeholderPromo = document.getElementById('placeholderPromo');
   if (placeholderPromo) placeholderPromo.hidden = false;
   
@@ -549,7 +565,7 @@ function showToast(message, type = 'info') {
   // Implementar toast visual si se desea
 }
 
-function closeSidePanel() { // ✅ FUNCIÓN REINSERTADA PARA EVITAR ReferenceError
+function closeSidePanel() { 
   if (sidePanel) {
     sidePanel.hidden = true;
   }
@@ -571,12 +587,18 @@ function openConfirm(message, callback) {
    EVENT LISTENERS
 ========================== */
 function setupEventListeners() {
-  if (sendBtn) {
-    sendBtn.addEventListener('click', sendMessage);
+  // CORRECCIÓN: El input de mensaje en chats.html no tiene ID, se usa una clase
+  // Usamos querySelector para el input de mensaje y el botón de enviar.
+  const msgInputFinal = document.querySelector('.conv-compose .msg-input');
+  const sendBtnFinal = document.getElementById('sendBtn');
+
+
+  if (sendBtnFinal) {
+    sendBtnFinal.addEventListener('click', sendMessage);
   }
   
-  if (msgInput) {
-    msgInput.addEventListener('keydown', (e) => {
+  if (msgInputFinal) {
+    msgInputFinal.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();

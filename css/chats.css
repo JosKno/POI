@@ -5,6 +5,7 @@
   --brand:#22c55e;
   --brand-dark:#16a34a;
   --accent:#3b82f6;
+  --link-user: #7dd3fc; /* NUEVA VARIABLE: Color azul brillante para usernames */
 }
 
 /* Reutiliza variables de landing.css */
@@ -77,14 +78,12 @@
 .logout-icon{ width:22px; height:22px; object-fit:contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,.3)); }
 
 /* =============== Layout principal =============== */
-/* ✅ Usamos solo padding-top para compensar el header.
-      Sidebar SIN sticky para evitar el “bajón” visual. */
 .chat-layout{
   display: grid;
   grid-template-columns: 340px 1fr;
-  /* CAMBIO: La altura de la cuadrícula es fija para anclar los scrolls */
+  /* CORRECCIÓN: Altura fija para scroll de sidebar/conv */
   height: calc(100dvh - 64px); 
-  padding-top: 64px; /* espacio header (lo compensamos arriba) */
+  padding-top: 64px; 
   color: var(--text);
 }
 
@@ -93,12 +92,10 @@
   background: rgba(10,14,24,.70);
   border-right: 1px solid rgba(255,255,255,.10);
   backdrop-filter: blur(8px);
-  /* CAMBIO: Forzar altura 100% para ocupar la celda grid */
-  height: 100%; 
-  /* CAMBIO: Usar flexbox para que el contenido se estire */
+  /* CORRECCIÓN: Para que la barra lateral esté pegada al fondo */
+  height: 100%;
   display: flex;
   flex-direction: column;
-  /* CAMBIO: Activar scroll para la barra lateral */
   overflow-y: auto; 
 }
 
@@ -133,7 +130,7 @@
 .sidebar-tabs{
   display:grid; grid-template-columns: repeat(3,1fr);
   gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08);
-  flex-shrink: 0; /* Evitar que las tabs se encojan */
+  flex-shrink: 0; 
 }
 .tab{
   background: rgba(20,24,34,.7); color:var(--text);
@@ -143,10 +140,14 @@
 .tab.active{ background: rgba(34,197,94,.25); border-color: rgba(34,197,94,.45); }
 
 /* Lista de chats */
-.chatlist{ display:grid; gap:4px; padding:8px; }
+.chatlist{ 
+  display:grid; gap:4px; padding:8px; 
+  flex-grow: 1; /* Para que ocupe el espacio restante */
+}
 .chatitem{
   display:grid; grid-template-columns:48px 1fr; gap:10px; align-items:center;
-  padding:10px; border-radius:12px; text-decoration:none; color:var(--text);
+  padding:8px 10px; /* Reducido un poco */
+  border-radius:12px; text-decoration:none; color:var(--text);
   transition: background .15s;
 }
 .chatitem:hover{ background: rgba(255,255,255,.08); }
@@ -155,6 +156,9 @@
   width:48px; height:48px; border-radius:12px; display:grid; place-items:center; font-weight:800;
   background: linear-gradient(135deg,#1f2937,#111827);
   border:1px solid rgba(255,255,255,.12);
+  /* AÑADIDO: Estilo para la letra inicial */
+  font-size: 1.5rem;
+  color: #fff;
 }
 .avatar.grp{ background: linear-gradient(135deg, #1f2937, #0a1b3c); }
 .avatar.online::after {
@@ -165,13 +169,19 @@
   width: 12px;
   height: 12px;
   border: 2px solid var(--bg);
-  border-radius: 50%;
   background-color: var(--brand);
 }
-.meta .row1{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-weight:800; }
-.meta time{ color:#9fb0c9; font-size:.85rem; }
-.meta .row2{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
-.meta .preview{ color:var(--muted); font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chatinfo .row1{ display:flex; justify-content:space-between; align-items:center; gap:10px; font-weight:800; }
+.chatinfo h3{ 
+  font-size: 1.05rem; /* Reducido */
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chatinfo time{ color:#9fb0c9; font-size:.8rem; }
+.chatinfo .row2{ display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.chatinfo .preview{ color:var(--muted); font-size:.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .badge{ background:#16a34a; color:#03160a; font-weight:900; font-size:.8rem; padding:2px 8px; border-radius:999px; }
 
 /* Panel derecho + promo */
@@ -184,8 +194,16 @@
   color: var(--text);
   box-shadow: 0 20px 50px rgba(0,0,0,.45);
 }
-.promo{ max-width:760px; margin: 8vh auto 0; }
-.promo-body{ text-align:center; padding:40px 32px; }
+.promo{ 
+  max-width:760px; 
+  /* CORRECCIÓN: Centrado horizontal y vertical */
+  margin: auto; 
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.promo-content{ text-align:center; padding:40px 32px; }
 .promo-emoji{ font-size:2.6rem; margin-bottom:6px; }
 .promo-title{
   font-weight:900; margin:6px 0 10px;
@@ -229,14 +247,14 @@
 
 /* ======= Conversación ======= */
 .conversation.card.glass{
-  max-width: 980px; margin:16px auto;
+  max-width: 980px; 
+  /* CORRECCIÓN: Usar margen superior de 16px, y el resto centrado */
+  margin:16px auto; 
   display:grid; 
-  /* CAMBIO: 1fr para que el conv-body ocupe el espacio flexible */
   grid-template-rows:auto 1fr auto; 
   gap:0;
-  /* CAMBIO: Forzar altura fija (ventana - header - margen) */
+  /* CORRECCIÓN: Altura fija para que conv-body tenga scroll */
   height: calc(100dvh - 64px - 32px); 
-  min-height: calc(100dvh - 64px - 48px);
 }
 
 /* Header de conversación */
@@ -249,6 +267,9 @@
   width:40px; height:40px; border-radius:12px; display:grid; place-items:center; font-weight:900;
   background: linear-gradient(135deg,#1f2937,#0a1b3c);
   border:1px solid rgba(255,255,255,.12);
+  /* AÑADIDO: Estilo para la letra inicial del chat */
+  font-size: 1.8rem;
+  color: #fff;
 }
 .conv-name{ font-weight:900; }
 .conv-sub{ font-size:.85rem; color:var(--muted); }
@@ -256,8 +277,7 @@
 /* Área de mensajes */
 .conv-body{
   padding:14px; display:grid; align-content:start; gap:10px; 
-  /* MANTENER: Scroll solo en el cuerpo de mensajes */
-  overflow-y: auto;
+  overflow-y: auto; /* Scroll solo en los mensajes */
   background: radial-gradient(1200px 600px at 50% -20%, rgba(255,255,255,.04), transparent);
 }
 
@@ -271,6 +291,13 @@
 .msg-peer{ background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); justify-self:start; }
 .msg-me{   background: linear-gradient(135deg, rgba(34,197,94,.35), rgba(59,130,246,.25));
            border:1px solid rgba(34,197,94,.45); justify-self:end; }
+/* AÑADIDO: Estilo para el nombre de usuario */
+.msg-user {
+  font-weight: 700;
+  color: var(--link-user); /* Usa la nueva variable azul */
+  font-size: 0.9rem;
+  margin-bottom: 3px;
+}
 
 /* Acciones */
 .conv-actions{ display:flex; align-items:center; gap:10px; }
@@ -320,13 +347,38 @@
 
 /* Composer (+ | input | enviar) */
 .conv-compose{
-  position: relative; z-index: 5; /* para que el menú no se recorte */
+  position: relative; z-index: 5; 
   display:grid; grid-template-columns: auto 1fr auto;
   gap:10px; align-items:center; padding:12px; border-top:1px solid rgba(255,255,255,.08);
 }
 #btnAttach.icon-btn{ background: linear-gradient(135deg, var(--accent), #1e40af); color:#fff; font-weight:900; }
-#msgInput.form-control{ height:40px; }
-#sendBtn{ height:40px; padding:0 16px; font-weight:800; }
+/* CORRECCIÓN: Input de mensaje estilizado */
+#msgInput.form-control, .conv-compose .msg-input{ 
+  height:40px; 
+  background: rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.16);
+  color: var(--text); 
+  border-radius: 12px; 
+  padding: 8px 14px;
+}
+#msgInput.form-control::placeholder, .conv-compose .msg-input::placeholder{ 
+  color:#9fb0c9; 
+}
+#sendBtn{ 
+  height:40px; padding:0 16px; font-weight:800; 
+  background: var(--brand); /* Usar color de marca */
+  border: none;
+  border-radius: 12px;
+  color: #06110a;
+  box-shadow: 0 4px 10px rgba(34,197,94,.25);
+  transition: all .2s;
+}
+#sendBtn:hover{
+  background: var(--brand-dark);
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(34,197,94,.4);
+}
+
 
 /* Menú de adjuntos estilo WhatsApp */
 .attach-wrap{ position:relative; }
